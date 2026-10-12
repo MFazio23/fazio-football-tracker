@@ -19,7 +19,7 @@ export const INITIAL_LEAGUES: League[] = [
     },
     espnConfig: {
       leagueId: '10482914',
-      seasonId: '2024',
+      seasonId: '2026',
     },
   },
   {
@@ -40,7 +40,7 @@ export const INITIAL_LEAGUES: League[] = [
     },
     espnConfig: {
       leagueId: '8492041',
-      seasonId: '2024',
+      seasonId: '2026',
     },
   },
   {
@@ -61,7 +61,7 @@ export const INITIAL_LEAGUES: League[] = [
     },
     espnConfig: {
       leagueId: '5920148',
-      seasonId: '2024',
+      seasonId: '2026',
     },
   },
   {
@@ -82,7 +82,7 @@ export const INITIAL_LEAGUES: League[] = [
     },
     espnConfig: {
       leagueId: '3819201',
-      seasonId: '2024',
+      seasonId: '2026',
     },
   },
   {

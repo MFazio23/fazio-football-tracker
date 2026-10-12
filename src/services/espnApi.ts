@@ -160,7 +160,7 @@ export async function fetchLiveNflScoreboard(): Promise<
 /**
  * Builds request headers and URL for ESPN Fantasy League API v3
  */
-export function getEspnFantasyUrl(leagueId: string, seasonId: string = '2024', scoringPeriodId?: number): string {
+export function getEspnFantasyUrl(leagueId: string, seasonId: string = '2026', scoringPeriodId?: number): string {
   const base = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${seasonId}/segments/0/leagues/${leagueId}`;
   const views = ['mMatchup', 'mRoster', 'mSettings', 'mTeam'];
   const viewParams = views.map((v) => `view=${v}`).join('&');
@@ -213,7 +213,7 @@ export async function fetchEspnViaProxy(
  */
 export async function testEspnLeagueConnection(
   leagueId: string,
-  seasonId: string = '2024',
+  seasonId: string = '2026',
   swid?: string,
   espnS2?: string
 ): Promise<{
@@ -265,7 +265,7 @@ export async function syncEspnLeague(
   const cfg = league.espnConfig;
   if (!cfg?.leagueId) return null;
 
-  const seasonId = cfg.seasonId || '2024';
+  const seasonId = cfg.seasonId || '2026';
   const url = getEspnFantasyUrl(cfg.leagueId, seasonId);
   const result = await fetchEspnViaProxy(url, cfg.swid, cfg.espnS2);
 

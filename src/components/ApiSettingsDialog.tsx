@@ -113,7 +113,7 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
           ...l,
           espnConfig: {
             leagueId: l.espnConfig?.leagueId || '',
-            seasonId: l.espnConfig?.seasonId || '2024',
+            seasonId: l.espnConfig?.seasonId || '2026',
             swid: accountSwid.trim(),
             espnS2: accountEspnS2.trim(),
           },
@@ -248,7 +248,7 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
     const cfg = league.espnConfig;
     const res = await testEspnLeagueConnection(
       cfg?.leagueId || '',
-      cfg?.seasonId || '2024',
+      cfg?.seasonId || '2026',
       cfg?.swid || accountSwid,
       cfg?.espnS2 || accountEspnS2
     );
@@ -525,7 +525,7 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
                     <TextField
                       label="Season Year"
                       size="small"
-                      value={league.espnConfig?.seasonId || '2024'}
+                      value={league.espnConfig?.seasonId || '2026'}
                       onChange={(e) => updateEspnConfig(league.id, 'seasonId', e.target.value)}
                     />
                     <TextField
