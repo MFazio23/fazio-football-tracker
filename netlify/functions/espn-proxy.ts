@@ -50,25 +50,99 @@ export const handler = async (event: any) => {
     const response = await fetch(url, { headers });
     let text = await response.text();
 
-    // If response is large (near or above AWS Lambda / Netlify 6MB limit), parse and trim unnecessary historical schedule items
-    if (text.length > 4 * 1024 * 1024) {
-      try {
-        const json = JSON.parse(text);
-        if (json.schedule && Array.isArray(json.schedule)) {
-          const currentWeek = json.scoringPeriodId || 1;
-          // Keep only current week and nearby matchups
-          json.schedule = json.schedule.filter(
+    // Always prune ESPN fantasy response payload to prevent hitting AWS Lambda / Netlify 6MB limit
+    try {
+      const json = JSON.parse(text);
+      if (json && json.teams && Array.isArray(json.teams)) {
+        const currentWeek = json.scoringPeriodId || 1;
+
+        const pruneEntry = (e: any) => {
+          if (!e) return null;
+          const p = e.playerPoolEntry?.player || {};
+          const stats = (p.stats || [])
+            .filter((s: any) => s.scoringPeriodId === currentWeek)
+            .map((s: any) => ({
+              scoringPeriodId: s.scoringPeriodId,
+              statSourceId: s.statSourceId,
+              appliedTotal: s.appliedTotal,
+            }));
+
+          return {
+            playerId: e.playerId || p.id,
+            lineupSlotId: e.lineupSlotId,
+            playerPoolEntry: {
+              appliedStatTotal: e.playerPoolEntry?.appliedStatTotal,
+              player: {
+                id: p.id,
+                fullName: p.fullName,
+                defaultPositionId: p.defaultPositionId,
+                proTeamId: p.proTeamId,
+                stats,
+              },
+            },
+          };
+        };
+
+        const prunedSchedule = (json.schedule || [])
+          .filter(
             (m: any) =>
               m.matchupPeriodId === currentWeek ||
               m.scoringPeriodId === currentWeek ||
               m.matchupPeriodId === currentWeek - 1 ||
               m.matchupPeriodId === currentWeek + 1
-          );
-        }
-        text = JSON.stringify(json);
-      } catch {
-        // Fallback to original text if JSON parse fails
+          )
+          .map((m: any) => ({
+            id: m.id,
+            matchupPeriodId: m.matchupPeriodId,
+            scoringPeriodId: m.scoringPeriodId,
+            home: m.home
+              ? {
+                  teamId: m.home.teamId,
+                  totalPoints: m.home.totalPoints,
+                  totalProjectedPointsLive: m.home.totalProjectedPointsLive,
+                  rosterForCurrentScoringPeriod: {
+                    entries: (m.home.rosterForCurrentScoringPeriod?.entries || []).map(pruneEntry),
+                  },
+                }
+              : null,
+            away: m.away
+              ? {
+                  teamId: m.away.teamId,
+                  totalPoints: m.away.totalPoints,
+                  totalProjectedPointsLive: m.away.totalProjectedPointsLive,
+                  rosterForCurrentScoringPeriod: {
+                    entries: (m.away.rosterForCurrentScoringPeriod?.entries || []).map(pruneEntry),
+                  },
+                }
+              : null,
+          }));
+
+        const prunedTeams = (json.teams || []).map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          location: t.location,
+          nickname: t.nickname,
+          abbrev: t.abbrev,
+          roster: {
+            entries: (t.roster?.entries || []).map(pruneEntry),
+          },
+        }));
+
+        const prunedPayload = {
+          id: json.id,
+          seasonId: json.seasonId,
+          scoringPeriodId: json.scoringPeriodId,
+          settings: {
+            name: json.settings?.name,
+          },
+          teams: prunedTeams,
+          schedule: prunedSchedule,
+        };
+
+        text = JSON.stringify(prunedPayload);
       }
+    } catch {
+      // Fallback to original text if JSON parse fails
     }
 
     return {
