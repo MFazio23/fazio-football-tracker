@@ -389,7 +389,11 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
             sx={{ mb: 2 }}
             icon={testResult.loading ? <CircularProgress size={18} /> : undefined}
           >
-            {testResult.loading ? 'Connecting via proxy to ESPN...' : testResult.message}
+            {testResult.loading
+              ? 'Connecting via proxy...'
+              : typeof testResult.message === 'string'
+              ? testResult.message
+              : JSON.stringify(testResult.message)}
           </Alert>
         )}
 

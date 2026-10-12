@@ -81,7 +81,17 @@ export async function fetchYahooViaProxy(url: string): Promise<{ ok: boolean; st
     }
 
     if (!res.ok) {
-      return { ok: false, status: res.status, error: (typeof data === 'object' && data.error) || `HTTP ${res.status}` };
+      let errMsg = `HTTP ${res.status}`;
+      if (typeof data === 'object' && data) {
+        if (typeof data.error === 'string') {
+          errMsg = data.error;
+        } else if (typeof data.error === 'object' && data.error) {
+          errMsg = data.error.description || data.error.detail || JSON.stringify(data.error);
+        } else if (data.description) {
+          errMsg = data.description;
+        }
+      }
+      return { ok: false, status: res.status, error: errMsg };
     }
 
     return { ok: true, status: res.status, data };
