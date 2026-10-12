@@ -162,7 +162,7 @@ export async function fetchLiveNflScoreboard(): Promise<
  */
 export function getEspnFantasyUrl(leagueId: string, seasonId: string = '2024', scoringPeriodId?: number): string {
   const base = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${seasonId}/segments/0/leagues/${leagueId}`;
-  const views = ['mMatchup', 'mRoster', 'mSettings', 'mTeam', 'kona_player_info'];
+  const views = ['mMatchup', 'mRoster', 'mSettings', 'mTeam'];
   const viewParams = views.map((v) => `view=${v}`).join('&');
   return scoringPeriodId ? `${base}?scoringPeriodId=${scoringPeriodId}&${viewParams}` : `${base}?${viewParams}`;
 }

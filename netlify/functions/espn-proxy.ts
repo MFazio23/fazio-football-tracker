@@ -48,7 +48,28 @@ export const handler = async (event: any) => {
     }
 
     const response = await fetch(url, { headers });
-    const data = await response.text();
+    let text = await response.text();
+
+    // If response is large (near or above AWS Lambda / Netlify 6MB limit), parse and trim unnecessary historical schedule items
+    if (text.length > 4 * 1024 * 1024) {
+      try {
+        const json = JSON.parse(text);
+        if (json.schedule && Array.isArray(json.schedule)) {
+          const currentWeek = json.scoringPeriodId || 1;
+          // Keep only current week and nearby matchups
+          json.schedule = json.schedule.filter(
+            (m: any) =>
+              m.matchupPeriodId === currentWeek ||
+              m.scoringPeriodId === currentWeek ||
+              m.matchupPeriodId === currentWeek - 1 ||
+              m.matchupPeriodId === currentWeek + 1
+          );
+        }
+        text = JSON.stringify(json);
+      } catch {
+        // Fallback to original text if JSON parse fails
+      }
+    }
 
     return {
       statusCode: response.status,
@@ -57,7 +78,7 @@ export const handler = async (event: any) => {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
       },
-      body: data,
+      body: text,
     };
   } catch (err: any) {
     return {
