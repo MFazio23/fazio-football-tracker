@@ -1,0 +1,30 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/espn-proxy"
+  to = "/.netlify/functions/espn-proxy"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/yahoo-auth"
+  to = "/.netlify/functions/yahoo-auth"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/yahoo-proxy"
+  to = "/.netlify/functions/yahoo-proxy"
+  status = 200
+  force = true
+
+# Fallback for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
