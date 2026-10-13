@@ -1,4 +1,5 @@
 import type { League, Player, Position, RosterRole } from '../types/fantasy';
+import { arePlayersSame, getPreferredDisplayName } from '../utils/playerMatcher';
 
 export interface EspnTeamOption {
   id: number;
@@ -435,7 +436,9 @@ export async function syncEspnLeague(
 
   const upsertPlayer = (pData: any, role: RosterRole) => {
     const existingIndex = playersList.findIndex(
-      (p) => p.name.toLowerCase() === pData.name.toLowerCase() || p.id === pData.id
+      (p) =>
+        p.id === pData.id ||
+        arePlayersSame(p.name, p.nflTeam, p.position, pData.name, pData.nflTeam, pData.position)
     );
 
     const participation = {
@@ -451,7 +454,8 @@ export async function syncEspnLeague(
       const otherParts = existing.participations.filter((part) => part.leagueId !== league.id);
       playersList[existingIndex] = {
         ...existing,
-        headshotUrl: existing.headshotUrl || pData.headshotUrl,
+        name: getPreferredDisplayName(existing.name, pData.name),
+        headshotUrl: existing.headshotUrl && !existing.headshotUrl.includes('default.png') ? existing.headshotUrl : pData.headshotUrl,
         participations: [...otherParts, participation],
       };
     } else {

@@ -30,6 +30,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import type { League, Player } from '../types/fantasy';
 import { testEspnLeagueConnection, syncEspnLeague, type EspnTeamOption } from '../services/espnApi';
+import { arePlayersSame, getPreferredDisplayName } from '../utils/playerMatcher';
 
 
 interface ApiSettingsDialogProps {
@@ -170,7 +171,9 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
       const upsertPlayer = (pData: any, role: 'my_team' | 'opponent') => {
         const pName = pData.name.trim();
         const existingIndex = updatedPlayersList.findIndex(
-          (p) => p.name.toLowerCase() === pName.toLowerCase()
+          (p) =>
+            p.name.toLowerCase() === pName.toLowerCase() ||
+            arePlayersSame(p.name, p.nflTeam, p.position, pName, pData.nflTeam, pData.position)
         );
 
         const participation = {
@@ -185,6 +188,7 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
           const ex = updatedPlayersList[existingIndex];
           updatedPlayersList[existingIndex] = {
             ...ex,
+            name: getPreferredDisplayName(ex.name, pName),
             position: pData.position || ex.position,
             nflTeam: (pData.nflTeam && pData.nflTeam !== 'FA') ? pData.nflTeam : ex.nflTeam,
             participations: [...ex.participations, participation],
