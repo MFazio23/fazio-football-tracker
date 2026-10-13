@@ -117,7 +117,117 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
     setTimeout(() => setAppliedNotice(false), 5000);
   };
 
+  // Yahoo Import State
+  const [yahooJsonInput, setYahooJsonInput] = useState<string>('');
+  const [targetYahooLeagueId, setTargetYahooLeagueId] = useState<string>(
+    leagues.find((l) => l.platform === 'yahoo')?.id || 'yahoo-1'
+  );
 
+  const handleImportYahooMatchup = () => {
+    try {
+      if (!yahooJsonInput.trim()) {
+        setTestResult({ success: false, loading: false, message: 'Please paste the JSON payload copied by the Tampermonkey script.' });
+        return;
+      }
+
+      const data = JSON.parse(yahooJsonInput.trim());
+      if (!data.matchup) {
+        throw new Error('Invalid JSON format: missing matchup data');
+      }
+
+      const targetLeague = localLeagues.find((l) => l.id === targetYahooLeagueId) || localLeagues.find((l) => l.platform === 'yahoo');
+      if (!targetLeague) {
+        throw new Error('No Yahoo league selected to import into.');
+      }
+
+      const updatedLeague: League = {
+        ...targetLeague,
+        name: data.leagueName || targetLeague.name,
+        matchup: {
+          ...targetLeague.matchup,
+          myTeamName: data.matchup.myTeamName || targetLeague.matchup.myTeamName,
+          myScore: Number(data.matchup.myScore) || 0,
+          myProjected: Number(data.matchup.myProjected) || 0,
+          opponentTeamName: data.matchup.opponentTeamName || targetLeague.matchup.opponentTeamName,
+          opponentScore: Number(data.matchup.opponentScore) || 0,
+          opponentProjected: Number(data.matchup.opponentProjected) || 0,
+        },
+      };
+
+      // Merge players into overall players state
+      let updatedPlayersList = players
+        .map((p) => ({
+          ...p,
+          participations: p.participations.filter((part) => part.leagueId !== targetLeague.id),
+        }))
+        .filter((p) => p.participations.length > 0);
+
+      const upsertPlayer = (pData: any, role: 'my_team' | 'opponent') => {
+        const pName = pData.name.trim();
+        const existingIndex = updatedPlayersList.findIndex(
+          (p) => p.name.toLowerCase() === pName.toLowerCase()
+        );
+
+        const participation = {
+          leagueId: targetLeague.id,
+          role,
+          points: Number(pData.points) || 0,
+          projectedPoints: Number(pData.projectedPoints) || Number(pData.points) || 0,
+          starterStatus: pData.starterStatus as 'starter' | 'bench',
+        };
+
+        if (existingIndex >= 0) {
+          const ex = updatedPlayersList[existingIndex];
+          updatedPlayersList[existingIndex] = {
+            ...ex,
+            position: pData.position || ex.position,
+            nflTeam: (pData.nflTeam && pData.nflTeam !== 'FA') ? pData.nflTeam : ex.nflTeam,
+            participations: [...ex.participations, participation],
+          };
+        } else {
+          updatedPlayersList.push({
+            id: `yahoo-${pName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+            name: pName,
+            position: pData.position || 'WR',
+            nflTeam: pData.nflTeam || 'FA',
+            headshotUrl:
+              pData.position === 'DEF'
+                ? `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${(pData.nflTeam || 'nfl').toLowerCase()}.png`
+                : 'https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/default.png',
+            game: {
+              opponent: 'vs NFL',
+              isHome: true,
+              status: 'PREGAME',
+              gameClock: 'Scheduled',
+            },
+            stats: {
+              summary: `${pData.points} pts`,
+            },
+            participations: [participation],
+          });
+        }
+      };
+
+      (data.myPlayers || []).forEach((p: any) => upsertPlayer(p, 'my_team'));
+      (data.oppPlayers || []).forEach((p: any) => upsertPlayer(p, 'opponent'));
+
+      onSyncEspnLeague(updatedLeague, updatedPlayersList);
+      setLocalLeagues((prev) => prev.map((l) => (l.id === updatedLeague.id ? updatedLeague : l)));
+      setYahooJsonInput('');
+
+      setTestResult({
+        success: true,
+        loading: false,
+        message: `Successfully imported Yahoo matchup for "${updatedLeague.name}"! Loaded ${data.myPlayers?.length || 0} user players and ${data.oppPlayers?.length || 0} opponent players.`,
+      });
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        loading: false,
+        message: `Failed to import Yahoo matchup: ${err.message}`,
+      });
+    }
+  };
 
   const handleTestEspn = async (league: League) => {
     setTestResult({ loading: true });
@@ -253,6 +363,7 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
       <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
         <Tabs value={tabIndex} onChange={(_, val) => setTabIndex(val)} textColor="primary" indicatorColor="primary">
           <Tab label="ESPN Leagues (4)" sx={{ fontWeight: 700 }} />
+          <Tab label="Yahoo Import (2)" sx={{ fontWeight: 700 }} />
           <Tab label="Live Simulation / Reset" sx={{ fontWeight: 700 }} />
         </Tabs>
       </Box>
@@ -471,8 +582,85 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
           </Box>
         )}
 
-        {/* Tab 1: Reset & Simulation Info */}
+        {/* Tab 1: Yahoo Matchup Import */}
         {tabIndex === 1 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            <Paper
+              sx={{
+                p: 2.5,
+                backgroundColor: 'rgba(96, 165, 250, 0.08)',
+                border: '1px solid rgba(96, 165, 250, 0.25)',
+                borderRadius: 2,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <CloudDownloadIcon sx={{ color: '#60a5fa' }} />
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#fff' }}>
+                  Import Yahoo Fantasy Matchup
+                </Typography>
+              </Box>
+              <Typography variant="body2" sx={{ color: '#cbd5e1', mb: 1.5 }}>
+                Use our Tampermonkey userscript (located at <code>scripts/yahoo-matchup-exporter.user.js</code>) on your Yahoo fantasy matchup screen. Click the floating green <strong>"Export to Football Tracker"</strong> button on Yahoo to copy your matchup JSON to your clipboard, then paste it below.
+              </Typography>
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <FormControl size="small" sx={{ maxWidth: 350 }}>
+                  <InputLabel>Target Yahoo League</InputLabel>
+                  <Select
+                    value={targetYahooLeagueId}
+                    label="Target Yahoo League"
+                    onChange={(e) => setTargetYahooLeagueId(e.target.value)}
+                  >
+                    {localLeagues
+                      .filter((l) => l.platform === 'yahoo')
+                      .map((l) => (
+                        <MenuItem key={l.id} value={l.id}>
+                          #{l.priority} {l.name}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  label="Paste Yahoo Matchup JSON"
+                  multiline
+                  rows={6}
+                  value={yahooJsonInput}
+                  onChange={(e) => setYahooJsonInput(e.target.value)}
+                  placeholder='Paste the JSON copied from Yahoo here (e.g. { "leagueName": "...", "matchup": { ... } })'
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}
+                />
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 1.5 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<CloudDownloadIcon />}
+                    onClick={handleImportYahooMatchup}
+                    disabled={!yahooJsonInput.trim()}
+                  >
+                    Import & Update Matchup
+                  </Button>
+                </Box>
+              </Box>
+            </Paper>
+
+            <Alert severity="info" icon={<InfoIcon fontSize="inherit" />}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Tampermonkey Script Setup:
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#cbd5e1', display: 'block' }}>
+                Open Tampermonkey &gt; Create a new script &gt; Paste the contents of <code>scripts/yahoo-matchup-exporter.user.js</code>. Whenever you open your Yahoo fantasy league or matchup, a one-click copy button will be waiting for you.
+              </Typography>
+            </Alert>
+          </Box>
+        )}
+
+        {/* Tab 2: Reset & Simulation Info */}
+        {tabIndex === 2 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#fff' }}>
               Data Management & Demo Mode
