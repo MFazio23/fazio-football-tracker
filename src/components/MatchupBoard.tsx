@@ -51,15 +51,15 @@ export const MatchupBoard: React.FC<MatchupBoardProps> = ({
         )}
       </Box>
 
-      {/* Grid of 6 Leagues */}
+      {/* Dynamic Grid of Leagues */}
       <Box
         sx={{
           display: 'grid',
           gridTemplateColumns: {
             xs: '1fr',
             sm: 'repeat(2, 1fr)',
-            md: 'repeat(3, 1fr)',
-            lg: 'repeat(6, 1fr)',
+            md: `repeat(${Math.min(3, sortedLeagues.length)}, 1fr)`,
+            lg: `repeat(${Math.min(6, sortedLeagues.length)}, 1fr)`,
           },
           gap: 1.5,
         }}

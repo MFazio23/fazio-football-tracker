@@ -120,9 +120,6 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
 
   // Yahoo Import State
   const [yahooJsonInput, setYahooJsonInput] = useState<string>('');
-  const [targetYahooLeagueId, setTargetYahooLeagueId] = useState<string>(
-    leagues.find((l) => l.platform === 'yahoo')?.id || 'yahoo-1'
-  );
 
   const handleImportYahooMatchup = () => {
     try {
@@ -151,9 +148,11 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
           (l) => l.platform === 'yahoo' && (l.id === `yahoo-${data.leagueId}` || l.yahooConfig?.leagueKey?.includes(data.leagueId))
         );
 
-        // Fallback: match by selected targetYahooLeagueId if only 1 item and user selected one
-        if (!targetLeague && rawLeagues.length === 1) {
-          targetLeague = currentLeagues.find((l) => l.id === targetYahooLeagueId);
+        // Fallback: match by league name
+        if (!targetLeague && data.leagueName) {
+          targetLeague = currentLeagues.find(
+            (l) => l.platform === 'yahoo' && l.name.toLowerCase() === data.leagueName.trim().toLowerCase()
+          );
         }
 
         // Fallback: find any available Yahoo league slot not yet updated in this run
@@ -659,30 +658,13 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
               </Typography>
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <FormControl size="small" sx={{ maxWidth: 350 }}>
-                  <InputLabel>Target Yahoo League</InputLabel>
-                  <Select
-                    value={targetYahooLeagueId}
-                    label="Target Yahoo League"
-                    onChange={(e) => setTargetYahooLeagueId(e.target.value)}
-                  >
-                    {localLeagues
-                      .filter((l) => l.platform === 'yahoo')
-                      .map((l) => (
-                        <MenuItem key={l.id} value={l.id}>
-                          #{l.priority} {l.name}
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
-
                 <TextField
                   label="Paste Yahoo Matchup JSON"
                   multiline
                   rows={6}
                   value={yahooJsonInput}
                   onChange={(e) => setYahooJsonInput(e.target.value)}
-                  placeholder='Paste the JSON copied from Yahoo here (e.g. { "leagueName": "...", "matchup": { ... } })'
+                  placeholder='Paste the JSON copied from Yahoo here (e.g. [ { "leagueName": "...", "matchup": { ... } } ] or single league JSON)'
                   sx={{
                     fontFamily: 'monospace',
                     fontSize: '0.85rem',
