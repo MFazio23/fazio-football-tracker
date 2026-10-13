@@ -73,35 +73,3 @@ export const saveStoredSettings = (settings: AppSettings): void => {
   }
 };
 
-const STORAGE_KEY_YAHOO_TOKENS = 'fazio_ffb_yahoo_tokens_v1';
-
-export interface YahooTokenData {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number; // Unix timestamp in ms
-  tokenType?: string;
-  clientId?: string;
-  clientSecret?: string;
-}
-
-export const loadYahooTokens = (): YahooTokenData | null => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_YAHOO_TOKENS);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-};
-
-export const saveYahooTokens = (tokens: YahooTokenData | null): void => {
-  try {
-    if (!tokens) {
-      localStorage.removeItem(STORAGE_KEY_YAHOO_TOKENS);
-    } else {
-      localStorage.setItem(STORAGE_KEY_YAHOO_TOKENS, JSON.stringify(tokens));
-    }
-  } catch (e) {
-    console.error('Failed to save Yahoo tokens to storage', e);
-  }
-};

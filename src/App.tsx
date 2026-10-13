@@ -60,27 +60,7 @@ export function App() {
     saveStoredSettings(settings);
   }, [settings]);
 
-  // Handle Yahoo OAuth Redirect Callback (e.g. /auth/yahoo/callback?code=...)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const isYahooCallback = window.location.pathname.includes('/auth/yahoo/callback') || params.has('code');
 
-    if (code && isYahooCallback) {
-      const redirectUri = `${window.location.origin}/auth/yahoo/callback`;
-      import('./services/yahooApi').then(({ exchangeYahooAuthCode }) => {
-        exchangeYahooAuthCode(code, redirectUri).then((res) => {
-          // Clean URL query params
-          window.history.replaceState({}, document.title, window.location.pathname.replace('/auth/yahoo/callback', '/'));
-          if (res.success) {
-            setApiDialogOpen(true);
-          } else {
-            alert(`Yahoo authentication failed: ${res.error || 'Unknown error'}`);
-          }
-        });
-      });
-    }
-  }, []);
 
   // Identify designated Main League (priority 1 or flagged isMain)
   const mainLeague = useMemo(() => {

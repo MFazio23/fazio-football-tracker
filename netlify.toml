@@ -11,17 +11,6 @@
   status = 200
   force = true
 
-[[redirects]]
-  from = "/api/yahoo-auth"
-  to = "/.netlify/functions/yahoo-auth"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/yahoo-proxy"
-  to = "/.netlify/functions/yahoo-proxy"
-  status = 200
-  force = true
 
 # Fallback for SPA routing
 [[redirects]]

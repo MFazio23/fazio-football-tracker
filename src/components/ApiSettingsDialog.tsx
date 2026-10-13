@@ -30,13 +30,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import type { League, Player } from '../types/fantasy';
 import { testEspnLeagueConnection, syncEspnLeague, type EspnTeamOption } from '../services/espnApi';
-import {
-  testYahooLeagueConnection,
-  syncYahooLeague,
-  fetchUserYahooLeagues,
-  type YahooTeamOption,
-} from '../services/yahooApi';
-import { loadYahooTokens, saveYahooTokens } from '../services/storage';
+
 
 interface ApiSettingsDialogProps {
   open: boolean;
@@ -87,7 +81,6 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
   }
 
   const espnLeagues = localLeagues.filter((l) => l.platform === 'espn');
-  const yahooLeagues = localLeagues.filter((l) => l.platform === 'yahoo');
 
   const updateEspnConfig = (leagueId: string, field: string, value: string) => {
     setLocalLeagues((prev) =>
@@ -124,124 +117,7 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
     setTimeout(() => setAppliedNotice(false), 5000);
   };
 
-  const updateYahooConfig = (leagueId: string, field: string, value: string) => {
-    setLocalLeagues((prev) =>
-      prev.map((l) => {
-        if (l.id !== leagueId) return l;
-        return {
-          ...l,
-          yahooConfig: {
-            ...l.yahooConfig,
-            leagueKey: l.yahooConfig?.leagueKey || '',
-            [field]: value,
-          },
-        };
-      })
-    );
-  };
 
-  // Yahoo Token and UI State
-  const [yahooTokens, setYahooTokens] = useState(loadYahooTokens);
-  const [yahooUserLeagues, setYahooUserLeagues] = useState<Array<{ leagueKey: string; name: string; season: string }>>([]);
-  const [loadingYahooLeagues, setLoadingYahooLeagues] = useState(false);
-  const [yahooLeagueTeams, setYahooLeagueTeams] = useState<Record<string, YahooTeamOption[]>>({});
-  const [selectedYahooTeams, setSelectedYahooTeams] = useState<Record<string, string>>({});
-
-  const handleStartYahooAuth = () => {
-    const clientId = import.meta.env.VITE_YAHOO_CLIENT_ID || yahooTokens?.clientId;
-    if (!clientId) {
-      setTestResult({
-        loading: false,
-        success: false,
-        message: 'Yahoo Client ID is not set. Add VITE_YAHOO_CLIENT_ID to .env.local or enter it below.',
-      });
-      return;
-    }
-
-    const redirectUri = `${window.location.origin}/auth/yahoo/callback`;
-    const authUrl = `https://api.login.yahoo.com/oauth2/request_auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&response_type=code&language=en-us`;
-
-    window.location.href = authUrl;
-  };
-
-  const handleDisconnectYahoo = () => {
-    saveYahooTokens(null);
-    setYahooTokens(null);
-    setYahooUserLeagues([]);
-    setTestResult({ success: true, loading: false, message: 'Yahoo account disconnected.' });
-  };
-
-  const handleLoadUserYahooLeagues = async () => {
-    setLoadingYahooLeagues(true);
-    const res = await fetchUserYahooLeagues();
-    setLoadingYahooLeagues(false);
-    if (res.success) {
-      setYahooUserLeagues(res.leagues);
-      setTestResult({
-        success: true,
-        loading: false,
-        message: `Found ${res.leagues.length} Yahoo fantasy leagues in your account!`,
-      });
-    } else {
-      setTestResult({ success: false, loading: false, message: res.error || 'Failed to fetch Yahoo leagues.' });
-    }
-  };
-
-  const handleTestYahoo = async (league: League) => {
-    const key = league.yahooConfig?.leagueKey;
-    if (!key) {
-      setTestResult({ success: false, loading: false, message: 'Please enter a Yahoo League Key (e.g. 449.l.123456).' });
-      return;
-    }
-
-    setTestResult({ loading: true, message: 'Testing connection to Yahoo API...' });
-    const res = await testYahooLeagueConnection(key);
-    setTestResult({
-      loading: false,
-      success: res.success,
-      message: res.message,
-    });
-
-    if (res.success && res.teams && res.teams.length > 0) {
-      setYahooLeagueTeams((prev) => ({ ...prev, [league.id]: res.teams || [] }));
-      setSelectedYahooTeams((prev) => ({
-        ...prev,
-        [league.id]: prev[league.id] || res.teams?.[0]?.teamKey || '',
-      }));
-    }
-  };
-
-  const handleSyncYahooLeague = async (league: League, explicitTeamKey?: string) => {
-    const teamKey = explicitTeamKey || selectedYahooTeams[league.id] || league.yahooConfig?.teamId;
-    if (!teamKey) {
-      setTestResult({ success: false, loading: false, message: 'Please select which Yahoo team is yours first.' });
-      return;
-    }
-
-    setSyncingMap((prev) => ({ ...prev, [league.id]: true }));
-    try {
-      const result = await syncYahooLeague(league, teamKey, players);
-      if (result) {
-        onSyncEspnLeague(result.updatedLeague, result.updatedPlayers);
-        setLocalLeagues((prev) =>
-          prev.map((l) => (l.id === result.updatedLeague.id ? result.updatedLeague : l))
-        );
-        setTestResult({
-          success: true,
-          loading: false,
-          message: `Successfully synced Yahoo "${result.updatedLeague.name}"! Matchup: ${result.updatedLeague.matchup.myTeamName} (${result.updatedLeague.matchup.myScore} pts) vs ${result.updatedLeague.matchup.opponentTeamName} (${result.updatedLeague.matchup.opponentScore} pts).`,
-        });
-      } else {
-        setTestResult({ success: false, loading: false, message: 'Could not parse Yahoo matchup or roster data.' });
-      }
-    } catch (err: any) {
-      setTestResult({ success: false, loading: false, message: err.message || 'Error during Yahoo sync' });
-    } finally {
-      setSyncingMap((prev) => ({ ...prev, [league.id]: false }));
-    }
-  };
 
   const handleTestEspn = async (league: League) => {
     setTestResult({ loading: true });
@@ -377,7 +253,6 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
       <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
         <Tabs value={tabIndex} onChange={(_, val) => setTabIndex(val)} textColor="primary" indicatorColor="primary">
           <Tab label="ESPN Leagues (4)" sx={{ fontWeight: 700 }} />
-          <Tab label="Yahoo Leagues (2)" sx={{ fontWeight: 700 }} />
           <Tab label="Live Simulation / Reset" sx={{ fontWeight: 700 }} />
         </Tabs>
       </Box>
@@ -596,224 +471,8 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
           </Box>
         )}
 
-        {/* Tab 1: Yahoo Leagues */}
+        {/* Tab 1: Reset & Simulation Info */}
         {tabIndex === 1 && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-            {/* Yahoo Account OAuth Connection Banner */}
-            <Paper
-              sx={{
-                p: 2.5,
-                backgroundColor: yahooTokens ? 'rgba(16, 185, 129, 0.08)' : 'rgba(96, 165, 250, 0.08)',
-                border: yahooTokens ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(96, 165, 250, 0.25)',
-                borderRadius: 2,
-              }}
-            >
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <KeyIcon sx={{ color: yahooTokens ? '#34d399' : '#60a5fa' }} />
-                    <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#fff' }}>
-                      {yahooTokens ? 'Yahoo Account Connected' : 'Connect Your Yahoo Account'}
-                    </Typography>
-                    {yahooTokens && (
-                      <Chip
-                        label="OAuth 2.0 Active"
-                        size="small"
-                        sx={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#34d399', fontWeight: 700 }}
-                      />
-                    )}
-                  </Box>
-                  <Typography variant="body2" sx={{ color: '#9ca3af', mt: 0.5 }}>
-                    {yahooTokens
-                      ? 'Access token is stored in your local browser and auto-refreshed via the serverless proxy.'
-                      : 'Sign in to grant read-only access to your Yahoo Fantasy matchups and player stats.'}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  {yahooTokens ? (
-                    <>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="primary"
-                        disabled={loadingYahooLeagues}
-                        startIcon={loadingYahooLeagues ? <CircularProgress size={14} /> : <LinkIcon />}
-                        onClick={handleLoadUserYahooLeagues}
-                      >
-                        Find My Leagues
-                      </Button>
-                      <Button size="small" variant="outlined" color="error" onClick={handleDisconnectYahoo}>
-                        Disconnect
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      size="medium"
-                      variant="contained"
-                      sx={{ backgroundColor: '#6001d2', '&:hover': { backgroundColor: '#5001b2' }, fontWeight: 800 }}
-                      startIcon={<KeyIcon />}
-                      onClick={handleStartYahooAuth}
-                    >
-                      Sign In with Yahoo
-                    </Button>
-                  )}
-                </Box>
-              </Box>
-
-              {/* If user leagues were discovered from Yahoo */}
-              {yahooUserLeagues.length > 0 && (
-                <Box sx={{ mt: 2, p: 1.5, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 1.5 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af', fontWeight: 700, display: 'block', mb: 1 }}>
-                    DISCOVERED LEAGUES IN YOUR YAHOO ACCOUNT:
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {yahooUserLeagues.map((ul) => (
-                      <Chip
-                        key={ul.leagueKey}
-                        label={`${ul.name} (${ul.leagueKey})`}
-                        size="small"
-                        clickable
-                        onClick={() => {
-                          const firstYahoo = yahooLeagues[0];
-                          if (firstYahoo) {
-                            updateYahooConfig(firstYahoo.id, 'leagueKey', ul.leagueKey);
-                          }
-                        }}
-                        sx={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#fff' }}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )}
-            </Paper>
-
-            <Alert severity="info" icon={<InfoIcon fontSize="inherit" />}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                Yahoo Fantasy API Keys:
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#cbd5e1', display: 'block' }}>
-                Yahoo uses league keys formatted like <code>449.l.123456</code> (where 449 is the NFL game code for 2024/2026).
-                Once connected, click "Test Connect" to list your team, then click "Sync Live Matchup & Rosters".
-              </Typography>
-            </Alert>
-
-            {/* Individual Yahoo Leagues */}
-            {yahooLeagues.map((league) => {
-              const discoveredTeams = yahooLeagueTeams[league.id] || [];
-              const selectedTeamKey = selectedYahooTeams[league.id] || league.yahooConfig?.teamId;
-              const isSyncing = syncingMap[league.id] || false;
-
-              return (
-                <Paper
-                  key={league.id}
-                  sx={{
-                    p: 2,
-                    backgroundColor: 'rgba(0,0,0,0.25)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    borderRadius: 2,
-                  }}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#fff' }}>
-                        #{league.priority} {league.name}
-                      </Typography>
-                      {league.yahooConfig?.leagueKey && (
-                        <Chip
-                          label={league.yahooConfig.leagueKey}
-                          size="small"
-                          sx={{
-                            height: 18,
-                            fontSize: '0.62rem',
-                            fontWeight: 700,
-                            backgroundColor: 'rgba(96, 165, 250, 0.15)',
-                            color: '#60a5fa',
-                          }}
-                        />
-                      )}
-                    </Box>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<LinkIcon />}
-                      onClick={() => handleTestYahoo(league)}
-                    >
-                      Test Connect
-                    </Button>
-                  </Box>
-
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mb: 1.5 }}>
-                    <TextField
-                      label="Yahoo League Key"
-                      size="small"
-                      value={league.yahooConfig?.leagueKey || ''}
-                      onChange={(e) => updateYahooConfig(league.id, 'leagueKey', e.target.value)}
-                      placeholder="e.g. 449.l.194821 or nfl.l.194821"
-                    />
-                    <TextField
-                      label="Yahoo Team Key / ID (Optional)"
-                      size="small"
-                      value={league.yahooConfig?.teamId || ''}
-                      onChange={(e) => updateYahooConfig(league.id, 'teamId', e.target.value)}
-                      placeholder="e.g. 449.l.194821.t.1"
-                    />
-                  </Box>
-
-                  {/* Discovered Teams Dropdown & Sync Button */}
-                  {discoveredTeams.length > 0 && (
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        backgroundColor: 'rgba(16, 185, 129, 0.08)',
-                        border: '1px solid rgba(16, 185, 129, 0.25)',
-                        borderRadius: 1.5,
-                        display: 'flex',
-                        flexDirection: { xs: 'column', sm: 'row' },
-                        gap: 1.5,
-                        alignItems: { sm: 'center' },
-                      }}
-                    >
-                      <FormControl size="small" sx={{ minWidth: 200, flexGrow: 1 }}>
-                        <InputLabel>Select Your Yahoo Team</InputLabel>
-                        <Select
-                          value={selectedTeamKey || ''}
-                          label="Select Your Yahoo Team"
-                          onChange={(e) =>
-                            setSelectedYahooTeams((prev) => ({
-                              ...prev,
-                              [league.id]: e.target.value,
-                            }))
-                          }
-                        >
-                          {discoveredTeams.map((t) => (
-                            <MenuItem key={t.teamKey} value={t.teamKey}>
-                              {t.name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-
-                      <Button
-                        variant="contained"
-                        color="success"
-                        size="small"
-                        disabled={isSyncing}
-                        startIcon={isSyncing ? <CircularProgress size={16} /> : <CloudDownloadIcon />}
-                        onClick={() => handleSyncYahooLeague(league)}
-                      >
-                        {isSyncing ? 'Syncing...' : 'Sync Live Matchup & Rosters'}
-                      </Button>
-                    </Box>
-                  )}
-                </Paper>
-              );
-            })}
-          </Box>
-        )}
-
-        {/* Tab 2: Reset & Simulation Info */}
-        {tabIndex === 2 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#fff' }}>
               Data Management & Demo Mode
