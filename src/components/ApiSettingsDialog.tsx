@@ -140,9 +140,13 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
         throw new Error('No Yahoo league selected to import into.');
       }
 
+      const importedName = data.leagueName && !['League', 'Yahoo League', ''].includes(data.leagueName.trim()) && !data.leagueName.startsWith('Yahoo League ')
+        ? data.leagueName.trim()
+        : targetLeague.name;
+
       const updatedLeague: League = {
         ...targetLeague,
-        name: data.leagueName || targetLeague.name,
+        name: importedName,
         matchup: {
           ...targetLeague.matchup,
           myTeamName: data.matchup.myTeamName || targetLeague.matchup.myTeamName,
