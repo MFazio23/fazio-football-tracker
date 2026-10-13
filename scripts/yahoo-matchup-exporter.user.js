@@ -99,28 +99,7 @@
       const urlMatch = window.location.pathname.match(/\/f1\/(\d+)/);
       const leagueId = urlMatch ? urlMatch[1] : '';
 
-      // Known league ID lookup or extract from DOM
-      const KNOWN_LEAGUES = {
-        '444541': 'O.I.F. Vets and the Rest',
-      };
-
-      let leagueName = KNOWN_LEAGUES[leagueId] || '';
-
-      if (!leagueName) {
-        // Look for any link or header that has the league URL without being the generic "League" or "Matchups" link
-        const candidates = Array.from(document.querySelectorAll(`a[href*="/f1/${leagueId}"]`))
-          .map((a) => a.textContent.trim())
-          .filter((txt) => txt.length > 2 && !['League', 'Matchups', 'Draft', 'Players', 'Home'].includes(txt));
-        if (candidates.length > 0) {
-          leagueName = candidates[0];
-        }
-      }
-
-      if (!leagueName) {
-        leagueName = `Yahoo League ${leagueId}`;
-      }
-
-      // 2. Identify Team Names directly from the Fz(26px) banner headers
+      // 1. Identify Team Names directly from the Fz(26px) banner headers
       const fzLinks = Array.from(document.querySelectorAll('a[class*="Fz(26px)"]'));
       let myTeamName = fzLinks[0] ? fzLinks[0].textContent.trim() : '';
       let oppTeamName = fzLinks[1] ? fzLinks[1].textContent.trim() : '';
@@ -141,6 +120,32 @@
 
       if (!myTeamName) myTeamName = 'TDs on the Horizon';
       if (!oppTeamName) oppTeamName = 'FC Упаковщики';
+
+      // 2. Dynamically extract League Name:
+      // In Yahoo's new nav, the team name container has a sibling div with the league name:
+      // <div><span>Team Name</span></div><div><span>League Name</span></div>
+      let leagueName = '';
+
+      if (myTeamName) {
+        const teamEls = Array.from(document.querySelectorAll('*')).filter(
+          (el) => el.children.length === 0 && el.textContent.trim() === myTeamName
+        );
+        for (const tEl of teamEls) {
+          const container = tEl.closest('div');
+          const sibling = container?.nextElementSibling || container?.parentElement?.nextElementSibling;
+          if (sibling && sibling.textContent.trim() && sibling.textContent.trim() !== myTeamName) {
+            leagueName = sibling.textContent.trim();
+            break;
+          }
+        }
+      }
+
+      if (!leagueName) {
+        const KNOWN_LEAGUES = {
+          '444541': 'O.I.F. Vets and the Rest',
+        };
+        leagueName = KNOWN_LEAGUES[leagueId] || `Yahoo League ${leagueId}`;
+      }
 
       // 3. Extract Head-to-Head rows
       const myPlayers = [];
