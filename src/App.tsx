@@ -19,7 +19,7 @@ import {
 import { INITIAL_LEAGUES, INITIAL_PLAYERS } from './data/initialData';
 import { simulateLivePlay } from './services/liveSimulation';
 import type { SimulatedPlayEvent } from './services/liveSimulation';
-import { fetchLiveNflScoreboard } from './services/espnApi';
+import { fetchLiveNflScoreboard, syncEspnLeague } from './services/espnApi';
 import { calculateNetRooting } from './utils/rootingGuide';
 
 export function App() {
@@ -113,9 +113,29 @@ export function App() {
         );
       }
 
-      // 2. Only simulate a play if auto-simulation setting is enabled
-      if (settings.autoSimulate) {
-        triggerSimulation();
+      // 2. Automatically re-sync configured ESPN leagues to pull latest scores, rosters & win probabilities
+      const espnLeaguesToSync = leagues.filter(
+        (l) => l.platform === 'espn' && l.espnConfig?.leagueId && l.espnConfig?.teamId
+      );
+
+      if (espnLeaguesToSync.length > 0) {
+        let currentPlayers = players;
+        let updatedLeagues = [...leagues];
+
+        for (const l of espnLeaguesToSync) {
+          try {
+            const syncRes = await syncEspnLeague(l, l.espnConfig!.teamId!, currentPlayers);
+            if (syncRes) {
+              updatedLeagues = updatedLeagues.map((item) => (item.id === syncRes.updatedLeague.id ? syncRes.updatedLeague : item));
+              currentPlayers = syncRes.updatedPlayers;
+            }
+          } catch (e) {
+            console.error(`Auto-sync failed for ${l.name}:`, e);
+          }
+        }
+
+        setLeagues(updatedLeagues);
+        setPlayers(currentPlayers);
       }
     } catch (err) {
       console.error('Error during refresh:', err);
