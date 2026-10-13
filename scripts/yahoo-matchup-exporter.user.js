@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Yahoo Fantasy Matchup Exporter
 // @namespace    https://football-tracker.mfazio.dev/
-// @version      1.0.0
+// @version      1.1.0
 // @description  Export Yahoo Fantasy Football matchup rosters and scores directly to Fazio Football Tracker
 // @author       Michael Fazio
 // @match        https://football.fantasysports.yahoo.com/f1/*
@@ -30,136 +30,162 @@
     return POS_MAP[clean] || (['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].includes(clean) ? clean : 'WR');
   }
 
-  function parsePlayerRow(row) {
-    // Yahoo fantasy table rows have .ysf-player-name or td.player
-    const nameEl = row.querySelector('.ysf-player-name a, td.player a.Nowrap');
+  function parsePlayerTd(playerTd) {
+    if (!playerTd) return null;
+
+    const nameEl = playerTd.querySelector('a[data-ys-playerid], a.playernote, a.Nowrap');
     if (!nameEl) return null;
 
     const name = nameEl.textContent.trim();
     if (!name || name === '(Empty)') return null;
 
-    // Team and position detail usually in a span next to or below player name (e.g. "KC - QB", "Buf - WR")
-    const detailEl = row.querySelector('.ysf-player-name span, td.player span.F-sub, td.player span');
+    // Team and position detail usually in a span next to or below player name (e.g. "Jax - QB", "Pit - QB")
+    const spans = Array.from(playerTd.querySelectorAll('span'));
+    const detailSpan = spans.find((s) => s.textContent.includes('-'));
+
     let nflTeam = 'FA';
     let position = 'WR';
 
-    if (detailEl) {
-      const text = detailEl.textContent.trim();
-      // formats: "KC - QB", "KC - WR,RB", "Buf - DEF", "Jax - RB (Q)"
+    if (detailSpan) {
+      const text = detailSpan.textContent.trim();
       const parts = text.split('-');
       if (parts.length >= 2) {
         nflTeam = parts[0].trim().toUpperCase();
         const posRaw = parts[1].trim().split(' ')[0].split(',')[0];
         position = normalizePos(posRaw);
-      } else {
-        const spaceParts = text.split(' ');
-        if (spaceParts.length >= 2) {
-          nflTeam = spaceParts[0].trim().toUpperCase();
-          position = normalizePos(spaceParts[1]);
-        }
       }
     }
 
-    // Lineup slot position (e.g. QB, WR, RB, W/R/T, BN, IR)
-    const slotEl = row.querySelector('td.pos, td.first, td[data-col="pos"]');
-    const slotText = (slotEl ? slotEl.textContent.trim() : '').toUpperCase();
-    const isStarter = slotText !== 'BN' && slotText !== 'BENCH' && slotText !== 'IR';
-
-    // Actual score & projected score
-    // In Yahoo matchup view, columns include 'fanpts' or 'pts' or 'projected'
-    const ptsEl = row.querySelector('td[data-col="0"], td.pts, td.score, td[data-col="points"]');
-    const projEl = row.querySelector('td[data-col="1"], td.projected, td[data-col="proj"]');
-
-    const points = ptsEl ? parseFloat(ptsEl.textContent.trim()) || 0 : 0;
-    const projected = projEl ? parseFloat(projEl.textContent.trim()) || points : points;
-
-    return {
-      name,
-      position,
-      nflTeam,
-      starterStatus: isStarter ? 'starter' : 'bench',
-      points,
-      projectedPoints: projected,
-    };
+    return { name, position, nflTeam };
   }
 
   function exportMatchup() {
     try {
-      // 1. Get League Name and ID from URL or page
+      // 1. Get League Name and ID
       const urlMatch = window.location.pathname.match(/\/f1\/(\d+)/);
       const leagueId = urlMatch ? urlMatch[1] : '';
-      const leagueNameEl = document.querySelector('#ysp-league-name a, .Grid-u h1, .league-name');
+      const leagueNameEl = document.querySelector('#ysp-league-name a, .Grid-u h1, .league-name, [class*="LeagueName"]');
       const leagueName = leagueNameEl ? leagueNameEl.textContent.trim() : `Yahoo League ${leagueId}`;
 
-      // 2. Identify Team Names & Scores
-      // Typical matchup page has #matchup-header with two teams
-      const teamHeaders = document.querySelectorAll('#matchup-header .team-info, .matchup-header .team');
-      let myTeamName = 'My Team';
-      let oppTeamName = 'Opponent';
-      let myScore = 0;
-      let myProjected = 0;
-      let oppScore = 0;
-      let oppProjected = 0;
+      // 2. Identify Team Names from headers or page
+      // On new Yahoo matchup pages, team names often live in the scoreboard or header banner
+      const teamLinks = Array.from(document.querySelectorAll('a[href*="/f1/' + leagueId + '/"]')).filter((a) => {
+        const href = a.getAttribute('href') || '';
+        return /\/f1\/\d+\/\d+$/.test(href) && a.textContent.trim().length > 1;
+      });
 
-      if (teamHeaders.length >= 2) {
-        myTeamName = teamHeaders[0].querySelector('.team-name, h3, a')?.textContent.trim() || 'My Team';
-        oppTeamName = teamHeaders[1].querySelector('.team-name, h3, a')?.textContent.trim() || 'Opponent';
+      let myTeamName = teamLinks[0] ? teamLinks[0].textContent.trim() : 'My Team';
+      let oppTeamName = teamLinks[1] ? teamLinks[1].textContent.trim() : 'Opponent';
 
-        const myScoreEl = teamHeaders[0].querySelector('.total-points, .score');
-        const oppScoreEl = teamHeaders[1].querySelector('.total-points, .score');
-        myScore = myScoreEl ? parseFloat(myScoreEl.textContent.trim()) || 0 : 0;
-        oppScore = oppScoreEl ? parseFloat(oppScoreEl.textContent.trim()) || 0 : 0;
+      // 3. Extract Head-to-Head rows
+      // Each row in the new layout has:
+      // td 0: Stats (Team 1)
+      // td 1: Player (Team 1)
+      // td 2: Proj (Team 1)
+      // td 3: Fan Pts (Team 1)
+      // td 4: Pos (e.g. "QB", "RB", "BN")
+      // td 5: Fan Pts (Team 2)
+      // td 6: Proj (Team 2)
+      // td 7: Player (Team 2)
+      // td 8: Stats (Team 2)
 
-        const myProjEl = teamHeaders[0].querySelector('.projected-points, .projected');
-        const oppProjEl = teamHeaders[1].querySelector('.projected-points, .projected');
-        myProjected = myProjEl ? parseFloat(myProjEl.textContent.trim()) || myScore : myScore;
-        oppProjected = oppProjEl ? parseFloat(oppProjEl.textContent.trim()) || oppScore : oppScore;
-      }
-
-      // 3. Extract Players from both teams
-      // Yahoo matchup tables usually render as #matchuptable or two tables inside #stat-table
-      const tables = document.querySelectorAll('table.teamtable, table.stat-table, #matchuptable table');
       const myPlayers = [];
       const oppPlayers = [];
+      let myTotalScore = 0;
+      let myTotalProj = 0;
+      let oppTotalScore = 0;
+      let oppTotalProj = 0;
 
-      if (tables.length >= 2) {
-        // Table 0 = user team, Table 1 = opponent team
-        tables[0].querySelectorAll('tbody tr').forEach((r) => {
-          const p = parsePlayerRow(r);
-          if (p) myPlayers.push(p);
-        });
+      const rows = document.querySelectorAll('tr');
 
-        tables[1].querySelectorAll('tbody tr').forEach((r) => {
-          const p = parsePlayerRow(r);
-          if (p) oppPlayers.push(p);
-        });
-      } else {
-        // Fallback for single combined matchup table or team roster page
-        const allRows = document.querySelectorAll('table.teamtable tbody tr, table.stat-table tbody tr');
-        allRows.forEach((r) => {
-          const p = parsePlayerRow(r);
-          if (p) myPlayers.push(p);
-        });
-      }
+      rows.forEach((row) => {
+        const playerTds = row.querySelectorAll('td:has(a[data-ys-playerid])');
+        if (playerTds.length === 0) return;
 
-      // If scores weren't found in header, sum up starter points
-      if (myScore === 0 && myPlayers.length > 0) {
-        myScore = myPlayers
-          .filter((p) => p.starterStatus === 'starter')
-          .reduce((sum, p) => sum + p.points, 0);
-        myProjected = myPlayers
-          .filter((p) => p.starterStatus === 'starter')
-          .reduce((sum, p) => sum + p.projectedPoints, 0);
-      }
+        const tds = Array.from(row.querySelectorAll('td'));
+        if (tds.length >= 5) {
+          // Find the center Position cell (usually contains QB, WR, RB, TE, W/R/T, K, DEF, BN)
+          let posIndex = tds.findIndex((td) => {
+            const txt = td.textContent.trim().toUpperCase();
+            return ['QB', 'WR', 'RB', 'TE', 'W/R/T', 'W/R', 'Q/W/R/T', 'K', 'DEF', 'BN', 'BENCH', 'IR'].includes(txt);
+          });
 
-      if (oppScore === 0 && oppPlayers.length > 0) {
-        oppScore = oppPlayers
-          .filter((p) => p.starterStatus === 'starter')
-          .reduce((sum, p) => sum + p.points, 0);
-        oppProjected = oppPlayers
-          .filter((p) => p.starterStatus === 'starter')
-          .reduce((sum, p) => sum + p.projectedPoints, 0);
-      }
+          // Fallback if center slot is around middle index
+          if (posIndex === -1 && tds.length >= 7) {
+            posIndex = Math.floor(tds.length / 2);
+          }
+
+          const slotText = posIndex !== -1 ? tds[posIndex].textContent.trim().toUpperCase() : '';
+          const isStarter = slotText !== 'BN' && slotText !== 'BENCH' && slotText !== 'IR';
+
+          // Team 1 (Left): Player td is before center
+          const t1PlayerTd = tds.slice(0, posIndex).find((td) => td.querySelector('a[data-ys-playerid]'));
+          // Team 2 (Right): Player td is after center
+          const t2PlayerTd = tds.slice(posIndex + 1).find((td) => td.querySelector('a[data-ys-playerid]'));
+
+          // Left team points & proj
+          // In the HTML: td 2 = Proj (20.36), td 3 = Pts (26.74)
+          let t1Pts = 0;
+          let t1Proj = 0;
+          if (posIndex >= 2) {
+            t1Pts = parseFloat(tds[posIndex - 1]?.textContent.trim()) || 0;
+            t1Proj = parseFloat(tds[posIndex - 2]?.textContent.trim()) || t1Pts;
+          }
+
+          // Right team points & proj
+          // In the HTML: td 5 = Pts (28.00), td 6 = Proj (19.71)
+          let t2Pts = 0;
+          let t2Proj = 0;
+          if (posIndex !== -1 && tds.length > posIndex + 2) {
+            t2Pts = parseFloat(tds[posIndex + 1]?.textContent.trim()) || 0;
+            t2Proj = parseFloat(tds[posIndex + 2]?.textContent.trim()) || t2Pts;
+          }
+
+          if (t1PlayerTd) {
+            const p1 = parsePlayerTd(t1PlayerTd);
+            if (p1) {
+              const fullP1 = {
+                ...p1,
+                starterStatus: isStarter ? 'starter' : 'bench',
+                points: t1Pts,
+                projectedPoints: t1Proj,
+              };
+              myPlayers.push(fullP1);
+              if (isStarter) {
+                myTotalScore += t1Pts;
+                myTotalProj += t1Proj;
+              }
+            }
+          }
+
+          if (t2PlayerTd) {
+            const p2 = parsePlayerTd(t2PlayerTd);
+            if (p2) {
+              const fullP2 = {
+                ...p2,
+                starterStatus: isStarter ? 'starter' : 'bench',
+                points: t2Pts,
+                projectedPoints: t2Proj,
+              };
+              oppPlayers.push(fullP2);
+              if (isStarter) {
+                oppTotalScore += t2Pts;
+                oppTotalProj += t2Proj;
+              }
+            }
+          }
+        }
+      });
+
+      // Check if scores are displayed directly in big total elements
+      const bigScores = Array.from(document.querySelectorAll('[class*="total-point"], [class*="TotalScore"], [class*="score"]'))
+        .map((el) => parseFloat(el.textContent.trim()))
+        .filter((n) => !isNaN(n) && n > 0 && n < 400);
+
+      const finalMyScore = Math.round(myTotalScore * 10) / 10;
+      const finalMyProj = Math.round(myTotalProj * 10) / 10;
+      const finalOppScore = Math.round(oppTotalScore * 10) / 10;
+      const finalOppProj = Math.round(oppTotalProj * 10) / 10;
 
       const payload = {
         exportedAt: new Date().toISOString(),
@@ -168,11 +194,11 @@
         platform: 'yahoo',
         matchup: {
           myTeamName,
-          myScore: Math.round(myScore * 10) / 10,
-          myProjected: Math.round(myProjected * 10) / 10,
+          myScore: finalMyScore,
+          myProjected: finalMyProj,
           opponentTeamName: oppTeamName,
-          opponentScore: Math.round(oppScore * 10) / 10,
-          opponentProjected: Math.round(oppProjected * 10) / 10,
+          opponentScore: finalOppScore,
+          opponentProjected: finalOppProj,
         },
         myPlayers,
         oppPlayers,
@@ -189,9 +215,9 @@
       alert(
         `✅ Yahoo Matchup Exported!\n\n` +
           `League: ${leagueName}\n` +
-          `Matchup: ${myTeamName} (${payload.matchup.myScore}) vs ${oppTeamName} (${payload.matchup.opponentScore})\n` +
-          `Starters: ${myPlayers.length} user players, ${oppPlayers.length} opponent players\n\n` +
-          `Matchup data copied to clipboard. Go to Fazio Football Tracker and click "Import Yahoo Data".`
+          `Matchup: ${myTeamName} (${finalMyScore} pts) vs ${oppTeamName} (${finalOppScore} pts)\n` +
+          `Players: ${myPlayers.length} on Team 1, ${oppPlayers.length} on Team 2\n\n` +
+          `Copied to clipboard! Go to Fazio Football Tracker and paste it in the Yahoo Import tab.`
       );
     } catch (err) {
       alert(`❌ Error exporting Yahoo matchup: ${err.message}`);
