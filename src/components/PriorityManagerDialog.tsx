@@ -19,6 +19,7 @@ import {
   Radio,
   RadioGroup,
   FormControlLabel,
+  Rating,
 } from '@mui/material';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
@@ -251,20 +252,36 @@ export const PriorityManagerDialog: React.FC<PriorityManagerDialogProps> = ({
                           </Select>
                         </FormControl>
 
-                        <FormControl size="small" sx={{ minWidth: 140 }}>
-                          <InputLabel>Importance</InputLabel>
-                          <Select
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            px: 1,
+                            minWidth: 150,
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ color: '#9ca3af', fontWeight: 600, mb: 0.25 }}>
+                            Importance ({league.importance || (league.priority === 1 ? 5 : Math.max(1, 6 - league.priority))}★)
+                          </Typography>
+                          <Rating
+                            name={`importance-rating-${league.id}`}
                             value={league.importance || (league.priority === 1 ? 5 : Math.max(1, 6 - league.priority))}
-                            label="Importance"
-                            onChange={(e) => updateLeagueField(league.id, 'importance', Number(e.target.value))}
-                          >
-                            <MenuItem value={5}>⭐⭐⭐⭐⭐ (5 - Crucial)</MenuItem>
-                            <MenuItem value={4}>⭐⭐⭐⭐ (4 - High)</MenuItem>
-                            <MenuItem value={3}>⭐⭐⭐ (3 - Medium)</MenuItem>
-                            <MenuItem value={2}>⭐⭐ (2 - Low)</MenuItem>
-                            <MenuItem value={1}>⭐ (1 - Casual/Fun)</MenuItem>
-                          </Select>
-                        </FormControl>
+                            max={5}
+                            precision={1}
+                            onChange={(_, newValue) => {
+                              if (newValue !== null) {
+                                updateLeagueField(league.id, 'importance', newValue);
+                              }
+                            }}
+                            sx={{
+                              color: '#fbbf24',
+                              '& .MuiRating-iconEmpty': {
+                                color: 'rgba(255, 255, 255, 0.2)',
+                              },
+                            }}
+                          />
+                        </Box>
                       </Box>
                     </Box>
                   </CardContent>

@@ -7,6 +7,7 @@ import {
   Typography,
   Chip,
   LinearProgress,
+  Rating,
 } from '@mui/material';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
@@ -117,16 +118,16 @@ export const MatchupBoard: React.FC<MatchupBoardProps> = ({
                         }}
                       />
                       {league.importance && (
-                        <Chip
-                          label={'★'.repeat(league.importance)}
+                        <Rating
+                          value={league.importance}
+                          readOnly
                           size="small"
                           sx={{
-                            height: 20,
-                            fontSize: '0.65rem',
-                            fontWeight: 800,
-                            backgroundColor: 'rgba(251, 191, 36, 0.15)',
                             color: '#fbbf24',
-                            border: '1px solid rgba(251, 191, 36, 0.3)',
+                            fontSize: '0.85rem',
+                            '& .MuiRating-iconEmpty': {
+                              color: 'rgba(255, 255, 255, 0.2)',
+                            },
                           }}
                         />
                       )}
