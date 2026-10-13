@@ -38,7 +38,9 @@
   }
 
   async function fetchYahooApi(endpoint) {
-    const res = await fetch(`https://pub-api-ro.fantasysports.yahoo.com${endpoint}`);
+    const res = await fetch(`https://pub-api-ro.fantasysports.yahoo.com${endpoint}`, {
+      credentials: 'include',
+    });
     if (!res.ok) {
       throw new Error(`API error HTTP ${res.status} on ${endpoint}`);
     }
