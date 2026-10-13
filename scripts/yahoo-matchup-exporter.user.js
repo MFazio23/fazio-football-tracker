@@ -258,6 +258,21 @@
         }
       }
 
+      // 5. Look for Yahoo's official win probability banner (e.g. "Favorite 99%", "99% Favorite", "1% Underdog")
+      let winProbability = undefined;
+      const probText = document.body.innerText;
+      const favMatch = probText.match(/(?:Favorite|Chance to win|Win prob(?:ability)?)\s*[:\s]?\s*(\d+)%/i) ||
+        probText.match(/(\d+)%\s*(?:Favorite|Chance to win)/i);
+      if (favMatch) {
+        winProbability = parseInt(favMatch[1], 10);
+      } else {
+        const underMatch = probText.match(/(\d+)%\s*Underdog/i);
+        if (underMatch) {
+          // If the user's side is the underdog, e.g. "1% Underdog"
+          winProbability = parseInt(underMatch[1], 10);
+        }
+      }
+
       const payload = {
         exportedAt: new Date().toISOString(),
         leagueId,
@@ -270,6 +285,7 @@
           opponentTeamName: oppTeamName,
           opponentScore: finalOppScore,
           opponentProjected: finalOppProj,
+          winProbability,
         },
         myPlayers,
         oppPlayers,

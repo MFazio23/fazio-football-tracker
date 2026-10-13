@@ -19,6 +19,7 @@ export interface League {
   name: string;
   platform: PlatformType;
   priority: number; // 1 = highest / Main league, 6 = lowest
+  importance?: number; // 1 to 5 star rating (5 = primary/crucial, 1 = casual/fun)
   isMain: boolean;
   scoringFormat: ScoringFormat;
   matchup: LeagueMatchup;

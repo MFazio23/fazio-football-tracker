@@ -155,6 +155,7 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
           opponentTeamName: data.matchup.opponentTeamName || targetLeague.matchup.opponentTeamName,
           opponentScore: Number(data.matchup.opponentScore) || 0,
           opponentProjected: Number(data.matchup.opponentProjected) || 0,
+          winProbability: data.matchup.winProbability !== undefined ? Number(data.matchup.winProbability) : targetLeague.matchup.winProbability,
         },
       };
 

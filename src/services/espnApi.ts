@@ -162,7 +162,7 @@ export async function fetchLiveNflScoreboard(): Promise<
  */
 export function getEspnFantasyUrl(leagueId: string, seasonId: string = '2026', scoringPeriodId?: number): string {
   const base = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${seasonId}/segments/0/leagues/${leagueId}`;
-  const views = ['mMatchup', 'mRoster', 'mSettings', 'mTeam'];
+  const views = ['mMatchup', 'mMatchupScore', 'mRoster', 'mSettings', 'mTeam'];
   const viewParams = views.map((v) => `view=${v}`).join('&');
   return scoringPeriodId ? `${base}?scoringPeriodId=${scoringPeriodId}&${viewParams}` : `${base}?${viewParams}`;
 }
@@ -343,6 +343,14 @@ export async function syncEspnLeague(
     ? oppTeam.name || `${oppTeam.location || ''} ${oppTeam.nickname || ''}`.trim() || `Team ${opponentTeamId}`
     : 'Opponent';
 
+  // Read official win probability from ESPN API (ranges from 0.0 to 1.0)
+  const isMyTeamHome = thisWeekMatchup?.home?.teamId === selectedTeamId;
+  const myMatchDataRaw = isMyTeamHome ? thisWeekMatchup?.home : thisWeekMatchup?.away;
+  let winProb: number | undefined = undefined;
+  if (myMatchDataRaw?.winProbability !== undefined && myMatchDataRaw?.winProbability !== null) {
+    winProb = Math.round(myMatchDataRaw.winProbability * 100);
+  }
+
   const updatedLeague: League = {
     ...league,
     name: data.settings?.name || league.name,
@@ -354,6 +362,7 @@ export async function syncEspnLeague(
       opponentTeamName: oppTeamName,
       opponentScore,
       opponentProjected,
+      winProbability: winProb !== undefined ? winProb : league.matchup.winProbability,
     },
   };
 

@@ -69,8 +69,8 @@ export const MatchupBoard: React.FC<MatchupBoardProps> = ({
           const isWinning = diff >= 0;
           const isMainLeague = league.priority === 1 || league.isMain;
 
-          // Win probability gauge
-          const winProb = league.matchup.winProbability ?? (isWinning ? 60 : 40);
+          // Win probability gauge from official API / Yahoo data
+          const winProb = league.matchup.winProbability;
 
           return (
             <Card
@@ -116,6 +116,20 @@ export const MatchupBoard: React.FC<MatchupBoardProps> = ({
                           color: isMainLeague ? '#ffffff' : '#e5e7eb',
                         }}
                       />
+                      {league.importance && (
+                        <Chip
+                          label={'★'.repeat(league.importance)}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: '0.65rem',
+                            fontWeight: 800,
+                            backgroundColor: 'rgba(251, 191, 36, 0.15)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(251, 191, 36, 0.3)',
+                          }}
+                        />
+                      )}
                       {isMainLeague && (
                         <Chip
                           label="MAIN"
@@ -216,23 +230,27 @@ export const MatchupBoard: React.FC<MatchupBoardProps> = ({
                         {isWinning ? `+${diff.toFixed(1)} pts` : `${diff.toFixed(1)} pts`}
                       </Typography>
                     </Box>
-                    <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.68rem' }}>
-                      {winProb}% win
-                    </Typography>
+                    {winProb !== undefined && (
+                      <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.68rem', fontWeight: 600 }}>
+                        {winProb}% win
+                      </Typography>
+                    )}
                   </Box>
 
-                  <LinearProgress
-                    variant="determinate"
-                    value={winProb}
-                    sx={{
-                      height: 4,
-                      borderRadius: 2,
-                      backgroundColor: 'rgba(239, 68, 68, 0.4)',
-                      '& .MuiLinearProgress-bar': {
-                        backgroundColor: '#10b981',
-                      },
-                    }}
-                  />
+                  {winProb !== undefined ? (
+                    <LinearProgress
+                      variant="determinate"
+                      value={winProb}
+                      sx={{
+                        height: 4,
+                        borderRadius: 2,
+                        backgroundColor: 'rgba(239, 68, 68, 0.4)',
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: '#10b981',
+                        },
+                      }}
+                    />
+                  ) : null}
                 </CardContent>
               </CardActionArea>
             </Card>

@@ -85,6 +85,7 @@ export const PriorityManagerDialog: React.FC<PriorityManagerDialogProps> = ({
         if (l.id !== id) return l;
         if (field === 'name') return { ...l, name: value };
         if (field === 'scoringFormat') return { ...l, scoringFormat: value as ScoringFormat };
+        if (field === 'importance') return { ...l, importance: value };
         if (field === 'myTeamName') {
           return { ...l, matchup: { ...l.matchup, myTeamName: value } };
         }
@@ -247,6 +248,21 @@ export const PriorityManagerDialog: React.FC<PriorityManagerDialogProps> = ({
                             <MenuItem value="PPR">Full PPR</MenuItem>
                             <MenuItem value="HALF_PPR">Half PPR</MenuItem>
                             <MenuItem value="STANDARD">Standard</MenuItem>
+                          </Select>
+                        </FormControl>
+
+                        <FormControl size="small" sx={{ minWidth: 140 }}>
+                          <InputLabel>Importance</InputLabel>
+                          <Select
+                            value={league.importance || (league.priority === 1 ? 5 : Math.max(1, 6 - league.priority))}
+                            label="Importance"
+                            onChange={(e) => updateLeagueField(league.id, 'importance', Number(e.target.value))}
+                          >
+                            <MenuItem value={5}>⭐⭐⭐⭐⭐ (5 - Crucial)</MenuItem>
+                            <MenuItem value={4}>⭐⭐⭐⭐ (4 - High)</MenuItem>
+                            <MenuItem value={3}>⭐⭐⭐ (3 - Medium)</MenuItem>
+                            <MenuItem value={2}>⭐⭐ (2 - Low)</MenuItem>
+                            <MenuItem value={1}>⭐ (1 - Casual/Fun)</MenuItem>
                           </Select>
                         </FormControl>
                       </Box>

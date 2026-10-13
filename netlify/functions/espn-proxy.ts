@@ -100,6 +100,7 @@ export const handler = async (event: any) => {
                   teamId: m.home.teamId,
                   totalPoints: m.home.totalPoints,
                   totalProjectedPointsLive: m.home.totalProjectedPointsLive,
+                  winProbability: m.home.winProbability,
                   rosterForCurrentScoringPeriod: {
                     entries: (m.home.rosterForCurrentScoringPeriod?.entries || []).map(pruneEntry),
                   },
@@ -110,6 +111,7 @@ export const handler = async (event: any) => {
                   teamId: m.away.teamId,
                   totalPoints: m.away.totalPoints,
                   totalProjectedPointsLive: m.away.totalProjectedPointsLive,
+                  winProbability: m.away.winProbability,
                   rosterForCurrentScoringPeriod: {
                     entries: (m.away.rosterForCurrentScoringPeriod?.entries || []).map(pruneEntry),
                   },

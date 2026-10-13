@@ -12,8 +12,10 @@ export function calculateNetRooting(player: Player, leagues: League[]): NetRooti
     const league = leagueMap.get(part.leagueId);
     if (!league) continue;
 
-    // Weight: #1 priority has weight totalLeagues, #2 has totalLeagues - 1, etc.
-    const weight = Math.max(1, totalLeagues + 1 - league.priority);
+    // Weight: Prioritize explicit 1-5 star importance if set, otherwise fallback to priority order
+    const weight = league.importance !== undefined
+      ? league.importance
+      : Math.max(1, totalLeagues + 1 - league.priority);
 
     if (part.role === 'my_team') {
       netWeight += weight;
