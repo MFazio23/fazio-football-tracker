@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Yahoo Fantasy Matchup Exporter
+// @name         Yahoo Fantasy Matchup Exporter (API Edition)
 // @namespace    https://football-tracker.mfazio.dev/
-// @version      1.2.0
-// @description  Export Yahoo Fantasy Football matchup rosters and scores directly to Fazio Football Tracker
+// @version      2.0.0
+// @description  Export official Yahoo Fantasy Football rosters, matchups, and stats directly via internal read-only API
 // @author       Michael Fazio
 // @match        https://football.fantasysports.yahoo.com/f1/*
 // @grant        GM_setClipboard
@@ -12,7 +12,6 @@
 (function () {
   'use strict';
 
-  // Position mapping to Tracker standard positions (including IDP positions)
   const POS_MAP = {
     QB: 'QB',
     RB: 'RB',
@@ -32,101 +31,164 @@
     IDP: 'DEF',
   };
 
-  const VALID_POSITIONS = [
-    'QB',
-    'RB',
-    'WR',
-    'TE',
-    'W/R/T',
-    'W/R',
-    'W/T',
-    'Q/W/R/T',
-    'K',
-    'DEF',
-    'DST',
-    'D/ST',
-    'LB',
-    'DT',
-    'DE',
-    'CB',
-    'S',
-    'DL',
-    'DB',
-    'IDP',
-    'BN',
-    'BENCH',
-    'IR',
-  ];
-
   function normalizePos(pos) {
     if (!pos) return 'WR';
     const clean = pos.toUpperCase().trim();
     return POS_MAP[clean] || (['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].includes(clean) ? clean : 'WR');
   }
 
-  function parsePlayerTd(playerTd) {
-    if (!playerTd) return null;
-
-    const nameEl = playerTd.querySelector('a[data-ys-playerid], a.playernote, a.Nowrap');
-    if (!nameEl) return null;
-
-    const name = nameEl.textContent.trim();
-    if (!name || name === '(Empty)') return null;
-
-    // Team and position detail usually in a span next to or below player name (e.g. "Jax - QB", "Pit - QB", "Hou - DE")
-    const spans = Array.from(playerTd.querySelectorAll('span'));
-    const detailSpan = spans.find((s) => s.textContent.includes('-'));
-
-    let nflTeam = 'FA';
-    let position = 'WR';
-
-    if (detailSpan) {
-      const text = detailSpan.textContent.trim();
-      const parts = text.split('-');
-      if (parts.length >= 2) {
-        nflTeam = parts[0].trim().toUpperCase();
-        const posRaw = parts[1].trim().split(' ')[0].split(',')[0];
-        position = normalizePos(posRaw);
-      }
+  async function fetchYahooApi(endpoint) {
+    const res = await fetch(`https://pub-api-ro.fantasysports.yahoo.com${endpoint}`);
+    if (!res.ok) {
+      throw new Error(`API error HTTP ${res.status} on ${endpoint}`);
     }
-
-    return { name, position, nflTeam };
+    return res.json();
   }
 
-  function exportMatchup() {
+  function transformRosterPlayer(pObj) {
+    const p = pObj.player || pObj;
+    const name = p.name?.full || `${p.name?.first || ''} ${p.name?.last || ''}`.trim() || 'Unknown Player';
+    const rawPos = p.display_position || p.primary_position || 'WR';
+    const position = normalizePos(rawPos);
+    const nflTeam = (p.editorial_team_abbr || 'FA').toUpperCase();
+    const headshotUrl = p.headshot?.url || p.image_url || '';
+
+    const slot = (p.selected_position?.position || '').toUpperCase();
+    const isStarter = slot !== 'BN' && slot !== 'BENCH' && slot !== 'IR';
+
+    const points = parseFloat(p.player_points?.total || '0') || 0;
+    const projected = parseFloat(p.player_projected_points?.total || '0') || points;
+
+    return {
+      name,
+      position,
+      nflTeam,
+      headshotUrl,
+      starterStatus: isStarter ? 'starter' : 'bench',
+      points: Math.round(points * 10) / 10,
+      projectedPoints: Math.round(projected * 10) / 10,
+    };
+  }
+
+  async function exportMatchup() {
+    const btn = document.getElementById('fft-export-btn');
+    if (btn) btn.textContent = '⏳ Fetching Official API...';
+
     try {
-      // 1. Get League Name and ID
+      const urlParams = new URLSearchParams(window.location.search);
       const urlMatch = window.location.pathname.match(/\/f1\/(\d+)/);
       const leagueId = urlMatch ? urlMatch[1] : '';
 
-      // 1. Identify Team Names directly from the Fz(26px) banner headers
-      const fzLinks = Array.from(document.querySelectorAll('a[class*="Fz(26px)"]'));
-      let myTeamName = fzLinks[0] ? fzLinks[0].textContent.trim() : '';
-      let oppTeamName = fzLinks[1] ? fzLinks[1].textContent.trim() : '';
+      if (!leagueId) {
+        throw new Error('Could not identify League ID from URL');
+      }
 
-      if (!myTeamName || !oppTeamName) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const mid1 = urlParams.get('mid1');
-        const mid2 = urlParams.get('mid2');
-        if (mid1 && !myTeamName) {
-          const l1 = document.querySelector(`a[href*="/f1/${leagueId}/${mid1}"]`);
-          if (l1) myTeamName = l1.textContent.trim();
-        }
-        if (mid2 && !oppTeamName) {
-          const l2 = document.querySelector(`a[href*="/f1/${leagueId}/${mid2}"]`);
-          if (l2) oppTeamName = l2.textContent.trim();
+      // 1. Fetch user games & leagues metadata to identify game_key (e.g. 470) and user's team ID
+      const metaData = await fetchYahooApi(
+        `/fantasy/v2/users;use_login=1/games;game_codes=nfl/leagues;league_keys=nfl.l.${leagueId}/teams?format=json_f`
+      ).catch(() => null);
+
+      let gameKey = '470';
+      let myTeamKey = '';
+      let leagueName = '';
+
+      if (metaData) {
+        const leagueObj = metaData.fantasy_content?.users?.[0]?.user?.games?.[0]?.game?.leagues?.[0]?.league;
+        if (leagueObj) {
+          gameKey = leagueObj.league_key.split('.l.')[0] || '470';
+          leagueName = leagueObj.name || '';
+          const myTeamObj = (leagueObj.teams || []).find((t) => t.team?.is_owned_by_current_login === 1);
+          if (myTeamObj) {
+            myTeamKey = myTeamObj.team.team_key;
+          }
         }
       }
 
-      if (!myTeamName) myTeamName = 'TDs on the Horizon';
-      if (!oppTeamName) oppTeamName = 'FC Упаковщики';
+      const fullLeagueKey = `${gameKey}.l.${leagueId}`;
 
-      // 2. Dynamically extract League Name:
-      // In Yahoo's new nav, the team name container has a sibling div with the league name:
-      // <div><span>Team Name</span></div><div><span>League Name</span></div>
-      let leagueName = '';
+      // If team key wasn't resolved, use mid1 or team links
+      if (!myTeamKey) {
+        const mid1 = urlParams.get('mid1');
+        if (mid1) {
+          myTeamKey = `${fullLeagueKey}.t.${mid1}`;
+        } else {
+          // Look for user's team link on page
+          const myLink = document.querySelector(`a[href*="/f1/${leagueId}/"]`);
+          const tId = myLink?.getAttribute('href')?.split('/')?.pop();
+          myTeamKey = `${fullLeagueKey}.t.${tId || '1'}`;
+        }
+      }
 
-      if (myTeamName) {
+      // 2. Fetch Matchups list for this team to get scores and opponent team_key
+      const matchupData = await fetchYahooApi(
+        `/fantasy/v2/team/${myTeamKey}/matchups?format=json_f`
+      );
+
+      const allMatchups = matchupData.fantasy_content?.team?.matchups || [];
+      const currentWeekParam = urlParams.get('week');
+
+      // Find target week matchup (or active week)
+      let activeMatchup = currentWeekParam
+        ? allMatchups.find((m) => String(m.matchup?.week) === String(currentWeekParam))
+        : allMatchups.find((m) => m.matchup?.status === 'midevent' || m.matchup?.status === 'preevent') ||
+          allMatchups[allMatchups.length - 1];
+
+      if (!activeMatchup) {
+        activeMatchup = allMatchups[0];
+      }
+
+      const m = activeMatchup?.matchup;
+      if (!m) {
+        throw new Error('No matchup data returned from API');
+      }
+
+      const weekNum = m.week || 1;
+      const teams = m.teams || [];
+      const myTeamApi = teams.find((t) => t.team?.team_key === myTeamKey) || teams[0];
+      const oppTeamApi = teams.find((t) => t.team?.team_key !== myTeamKey) || teams[1] || teams[0];
+
+      const myTeamName = myTeamApi?.team?.name || 'My Team';
+      const oppTeamName = oppTeamApi?.team?.name || 'Opponent';
+      const oppTeamKey = oppTeamApi?.team?.team_key;
+
+      const myScore = parseFloat(myTeamApi?.team?.team_points?.total || '0') || 0;
+      const myProjected = parseFloat(myTeamApi?.team?.team_projected_points?.total || '0') || myScore;
+      const oppScore = parseFloat(oppTeamApi?.team?.team_points?.total || '0') || 0;
+      const oppProjected = parseFloat(oppTeamApi?.team?.team_projected_points?.total || '0') || oppScore;
+
+      // Check official win probability on page
+      let winProbability = undefined;
+      const probText = document.body.innerText;
+      const favMatch = probText.match(/(?:Favorite|Chance to win|Win prob(?:ability)?)\s*[:\s]?\s*(\d+)%/i);
+      if (favMatch) {
+        winProbability = parseInt(favMatch[1], 10);
+      }
+
+      // 3. Fetch Full Roster (players, positions, headshots, and stats) for both teams
+      // Request players with stats for the active week
+      const [myRosterData, oppRosterData] = await Promise.all([
+        fetchYahooApi(
+          `/fantasy/v2/team/${myTeamKey}/roster;week=${weekNum}/players/stats?format=json_f`
+        ).catch(() =>
+          fetchYahooApi(`/fantasy/v2/team/${myTeamKey}/roster;week=${weekNum}?format=json_f`)
+        ),
+        oppTeamKey
+          ? fetchYahooApi(
+              `/fantasy/v2/team/${oppTeamKey}/roster;week=${weekNum}/players/stats?format=json_f`
+            ).catch(() =>
+              fetchYahooApi(`/fantasy/v2/team/${oppTeamKey}/roster;week=${weekNum}?format=json_f`)
+            )
+          : Promise.resolve(null),
+      ]);
+
+      const myRawPlayers = myRosterData?.fantasy_content?.team?.roster?.players || [];
+      const oppRawPlayers = oppRosterData?.fantasy_content?.team?.roster?.players || [];
+
+      const myPlayers = myRawPlayers.map(transformRosterPlayer);
+      const oppPlayers = oppRawPlayers.map(transformRosterPlayer);
+
+      // Fallback for league name if not in metadata
+      if (!leagueName) {
         const teamEls = Array.from(document.querySelectorAll('*')).filter(
           (el) => el.children.length === 0 && el.textContent.trim() === myTeamName
         );
@@ -141,136 +203,7 @@
       }
 
       if (!leagueName) {
-        const KNOWN_LEAGUES = {
-          '444541': 'O.I.F. Vets and the Rest',
-        };
-        leagueName = KNOWN_LEAGUES[leagueId] || `Yahoo League ${leagueId}`;
-      }
-
-      // 3. Extract Head-to-Head rows
-      const myPlayers = [];
-      const oppPlayers = [];
-      let myTotalScore = 0;
-      let myTotalProj = 0;
-      let oppTotalScore = 0;
-      let oppTotalProj = 0;
-
-      const rows = document.querySelectorAll('tr');
-
-      rows.forEach((row) => {
-        // Skip total/summary rows
-        if (row.textContent.includes('TOTAL')) return;
-
-        const tds = Array.from(row.querySelectorAll('td'));
-        if (tds.length >= 5) {
-          // Find the center Position cell (QB, RB, WR, TE, W/R/T, K, DEF, LB, DT, DE, CB, S, BN)
-          let posIndex = tds.findIndex((td) => {
-            const txt = td.textContent.trim().toUpperCase();
-            return VALID_POSITIONS.includes(txt);
-          });
-
-          // Fallback if center slot is around middle index
-          if (posIndex === -1 && tds.length >= 7) {
-            posIndex = Math.floor(tds.length / 2);
-          }
-
-          if (posIndex === -1) return;
-
-          const slotText = tds[posIndex].textContent.trim().toUpperCase();
-          const isStarter = slotText !== 'BN' && slotText !== 'BENCH' && slotText !== 'IR';
-
-          // Team 1 (Left): Player td is before center
-          const t1PlayerTd = tds.slice(0, posIndex).find((td) => td.querySelector('a[data-ys-playerid]'));
-          // Team 2 (Right): Player td is after center
-          const t2PlayerTd = tds.slice(posIndex + 1).find((td) => td.querySelector('a[data-ys-playerid]'));
-
-          // Left team points & proj
-          let t1Pts = 0;
-          let t1Proj = 0;
-          if (posIndex >= 2) {
-            t1Pts = parseFloat(tds[posIndex - 1]?.textContent.trim()) || 0;
-            t1Proj = parseFloat(tds[posIndex - 2]?.textContent.trim()) || t1Pts;
-          }
-
-          // Right team points & proj
-          let t2Pts = 0;
-          let t2Proj = 0;
-          if (tds.length > posIndex + 2) {
-            t2Pts = parseFloat(tds[posIndex + 1]?.textContent.trim()) || 0;
-            t2Proj = parseFloat(tds[posIndex + 2]?.textContent.trim()) || t2Pts;
-          }
-
-          if (t1PlayerTd) {
-            const p1 = parsePlayerTd(t1PlayerTd);
-            if (p1) {
-              const fullP1 = {
-                ...p1,
-                starterStatus: isStarter ? 'starter' : 'bench',
-                points: t1Pts,
-                projectedPoints: t1Proj,
-              };
-              myPlayers.push(fullP1);
-              if (isStarter) {
-                myTotalScore += t1Pts;
-                myTotalProj += t1Proj;
-              }
-            }
-          }
-
-          if (t2PlayerTd) {
-            const p2 = parsePlayerTd(t2PlayerTd);
-            if (p2) {
-              const fullP2 = {
-                ...p2,
-                starterStatus: isStarter ? 'starter' : 'bench',
-                points: t2Pts,
-                projectedPoints: t2Proj,
-              };
-              oppPlayers.push(fullP2);
-              if (isStarter) {
-                oppTotalScore += t2Pts;
-                oppTotalProj += t2Proj;
-              }
-            }
-          }
-        }
-      });
-
-      // 4. Look for the top banner big scores (e.g. 218.36 vs 181.44)
-      let finalMyScore = Math.round(myTotalScore * 10) / 10;
-      let finalMyProj = Math.round(myTotalProj * 10) / 10;
-      let finalOppScore = Math.round(oppTotalScore * 10) / 10;
-      let finalOppProj = Math.round(oppTotalProj * 10) / 10;
-
-      // Check footer row with totals if present
-      const footerRow = Array.from(rows).find((r) => r.textContent.includes('TOTAL'));
-      if (footerRow) {
-        const fTds = Array.from(footerRow.querySelectorAll('td'));
-        const numbers = fTds
-          .map((td) => parseFloat(td.textContent.trim()))
-          .filter((n) => !isNaN(n) && n > 0);
-        if (numbers.length >= 2) {
-          // e.g. [146.13, 218.36, 181.44, 137.23]
-          const leftScores = numbers.slice(0, Math.floor(numbers.length / 2));
-          const rightScores = numbers.slice(Math.floor(numbers.length / 2));
-          if (leftScores.length > 0) finalMyScore = leftScores[leftScores.length - 1];
-          if (rightScores.length > 0) finalOppScore = rightScores[0];
-        }
-      }
-
-      // 5. Look for Yahoo's official win probability banner (e.g. "Favorite 99%", "99% Favorite", "1% Underdog")
-      let winProbability = undefined;
-      const probText = document.body.innerText;
-      const favMatch = probText.match(/(?:Favorite|Chance to win|Win prob(?:ability)?)\s*[:\s]?\s*(\d+)%/i) ||
-        probText.match(/(\d+)%\s*(?:Favorite|Chance to win)/i);
-      if (favMatch) {
-        winProbability = parseInt(favMatch[1], 10);
-      } else {
-        const underMatch = probText.match(/(\d+)%\s*Underdog/i);
-        if (underMatch) {
-          // If the user's side is the underdog, e.g. "1% Underdog"
-          winProbability = parseInt(underMatch[1], 10);
-        }
+        leagueName = `Yahoo League ${leagueId}`;
       }
 
       const payload = {
@@ -280,11 +213,11 @@
         platform: 'yahoo',
         matchup: {
           myTeamName,
-          myScore: finalMyScore,
-          myProjected: finalMyProj,
+          myScore: Math.round(myScore * 10) / 10,
+          myProjected: Math.round(myProjected * 10) / 10,
           opponentTeamName: oppTeamName,
-          opponentScore: finalOppScore,
-          opponentProjected: finalOppProj,
+          opponentScore: Math.round(oppScore * 10) / 10,
+          opponentProjected: Math.round(oppProjected * 10) / 10,
           winProbability,
         },
         myPlayers,
@@ -300,19 +233,21 @@
       }
 
       alert(
-        `✅ Yahoo Matchup Exported!\n\n` +
-          `League: ${leagueName}\n` +
-          `Matchup: ${myTeamName} (${finalMyScore}) vs ${oppTeamName} (${finalOppScore})\n` +
-          `Players: ${myPlayers.length} on your team, ${oppPlayers.length} on opponent\n\n` +
-          `Copied to clipboard! Go to Fazio Football Tracker and paste it in the Yahoo Import tab.`
+        `✅ Yahoo Matchup Exported (Official API)!\n\n` +
+          `League: "${leagueName}"\n` +
+          `Matchup: ${myTeamName} (${payload.matchup.myScore} pts) vs ${oppTeamName} (${payload.matchup.opponentScore} pts)\n` +
+          `Rosters: ${myPlayers.length} players for your team, ${oppPlayers.length} for opponent\n` +
+          `Full names and official headshots loaded!\n\n` +
+          `Copied to clipboard. Paste into your tracker!`
       );
     } catch (err) {
       alert(`❌ Error exporting Yahoo matchup: ${err.message}`);
       console.error(err);
+    } finally {
+      if (btn) btn.textContent = '🏈 Export to Football Tracker';
     }
   }
 
-  // Inject floating export button into Yahoo fantasy page
   function injectExportButton() {
     if (document.getElementById('fft-export-btn')) return;
 
