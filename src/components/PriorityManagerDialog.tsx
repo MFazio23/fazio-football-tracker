@@ -25,6 +25,7 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import StarIcon from '@mui/icons-material/Star';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteIcon from '@mui/icons-material/Delete';
 import type { League, ScoringFormat } from '../types/fantasy';
 
 interface PriorityManagerDialogProps {
@@ -32,6 +33,7 @@ interface PriorityManagerDialogProps {
   onClose: () => void;
   leagues: League[];
   onSaveLeagues: (updatedLeagues: League[]) => void;
+  onDeleteLeague?: (leagueId: string) => void;
 }
 
 export const PriorityManagerDialog: React.FC<PriorityManagerDialogProps> = ({
@@ -39,6 +41,7 @@ export const PriorityManagerDialog: React.FC<PriorityManagerDialogProps> = ({
   onClose,
   leagues,
   onSaveLeagues,
+  onDeleteLeague,
 }) => {
   const [localLeagues, setLocalLeagues] = useState<League[]>(() =>
     [...leagues].sort((a, b) => a.priority - b.priority)
@@ -78,6 +81,23 @@ export const PriorityManagerDialog: React.FC<PriorityManagerDialogProps> = ({
     // Recalculate priority numbers 1..n
     const updated = copy.map((l, i) => ({ ...l, priority: i + 1 }));
     setLocalLeagues(updated);
+  };
+
+  const handleDeleteLeague = (id: string, name: string) => {
+    if (localLeagues.length <= 1) {
+      alert('You must have at least one league active.');
+      return;
+    }
+    if (window.confirm(`Are you sure you want to delete "${name}"? This will remove it and clean up any unique players from this league.`)) {
+      const remaining = localLeagues.filter((l) => l.id !== id).map((l, i) => ({ ...l, priority: i + 1 }));
+      setLocalLeagues(remaining);
+      if (mainId === id) {
+        setMainId(remaining[0].id);
+      }
+      if (onDeleteLeague) {
+        onDeleteLeague(id);
+      }
+    }
   };
 
   const updateLeagueField = (id: string, field: string, value: any) => {
@@ -281,6 +301,24 @@ export const PriorityManagerDialog: React.FC<PriorityManagerDialogProps> = ({
                               },
                             }}
                           />
+                        </Box>
+
+                        {/* Delete League Button */}
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteLeague(league.id, league.name)}
+                            title="Delete this league"
+                            sx={{
+                              color: '#ef4444',
+                              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                              '&:hover': {
+                                backgroundColor: 'rgba(239, 68, 68, 0.25)',
+                              },
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
                         </Box>
                       </Box>
                     </Box>

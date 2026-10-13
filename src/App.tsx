@@ -325,6 +325,17 @@ export function App() {
           onClose={() => setPriorityDialogOpen(false)}
           leagues={leagues}
           onSaveLeagues={(updated) => setLeagues(updated)}
+          onDeleteLeague={(leagueIdToDelete) => {
+            setLeagues((prev) => prev.filter((l) => l.id !== leagueIdToDelete));
+            setPlayers((prev) =>
+              prev
+                .map((p) => ({
+                  ...p,
+                  participations: p.participations.filter((part) => part.leagueId !== leagueIdToDelete),
+                }))
+                .filter((p) => p.participations.length > 0)
+            );
+          }}
         />
 
         {/* API Settings & Credentials Dialog */}
