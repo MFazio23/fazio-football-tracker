@@ -131,103 +131,149 @@ export const ApiSettingsDialog: React.FC<ApiSettingsDialogProps> = ({
         return;
       }
 
-      const data = JSON.parse(yahooJsonInput.trim());
-      if (!data.matchup) {
+      const parsed = JSON.parse(yahooJsonInput.trim());
+      const rawLeagues = Array.isArray(parsed) ? parsed : [parsed];
+
+      if (rawLeagues.length === 0 || !rawLeagues[0].matchup) {
         throw new Error('Invalid JSON format: missing matchup data');
       }
 
-      const targetLeague = localLeagues.find((l) => l.id === targetYahooLeagueId) || localLeagues.find((l) => l.platform === 'yahoo');
-      if (!targetLeague) {
-        throw new Error('No Yahoo league selected to import into.');
-      }
+      let currentLeagues = [...localLeagues];
+      let currentPlayers = [...players];
+      const importedLeagueNames: string[] = [];
 
-      const importedName = data.leagueName && !['League', 'Yahoo League', ''].includes(data.leagueName.trim()) && !data.leagueName.startsWith('Yahoo League ')
-        ? data.leagueName.trim()
-        : targetLeague.name;
+      for (let i = 0; i < rawLeagues.length; i++) {
+        const data = rawLeagues[i];
+        if (!data.matchup) continue;
 
-      const updatedLeague: League = {
-        ...targetLeague,
-        name: importedName,
-        matchup: {
-          ...targetLeague.matchup,
-          myTeamName: data.matchup.myTeamName || targetLeague.matchup.myTeamName,
-          myScore: Number(data.matchup.myScore) || 0,
-          myProjected: Number(data.matchup.myProjected) || 0,
-          opponentTeamName: data.matchup.opponentTeamName || targetLeague.matchup.opponentTeamName,
-          opponentScore: Number(data.matchup.opponentScore) || 0,
-          opponentProjected: Number(data.matchup.opponentProjected) || 0,
-          winProbability: data.matchup.winProbability !== undefined ? Number(data.matchup.winProbability) : targetLeague.matchup.winProbability,
-        },
-      };
-
-      // Merge players into overall players state
-      let updatedPlayersList = players
-        .map((p) => ({
-          ...p,
-          participations: p.participations.filter((part) => part.leagueId !== targetLeague.id),
-        }))
-        .filter((p) => p.participations.length > 0);
-
-      const upsertPlayer = (pData: any, role: 'my_team' | 'opponent') => {
-        const pName = pData.name.trim();
-        const existingIndex = updatedPlayersList.findIndex(
-          (p) =>
-            p.name.toLowerCase() === pName.toLowerCase() ||
-            arePlayersSame(p.name, p.nflTeam, p.position, pName, pData.nflTeam, pData.position)
+        // Find existing target league by leagueId or matching platform/id
+        let targetLeague = currentLeagues.find(
+          (l) => l.platform === 'yahoo' && (l.id === `yahoo-${data.leagueId}` || l.yahooConfig?.leagueKey?.includes(data.leagueId))
         );
 
-        const participation = {
-          leagueId: targetLeague.id,
-          role,
-          points: Number(pData.points) || 0,
-          projectedPoints: Number(pData.projectedPoints) || Number(pData.points) || 0,
-          starterStatus: pData.starterStatus as 'starter' | 'bench',
+        // Fallback: match by selected targetYahooLeagueId if only 1 item and user selected one
+        if (!targetLeague && rawLeagues.length === 1) {
+          targetLeague = currentLeagues.find((l) => l.id === targetYahooLeagueId);
+        }
+
+        // Fallback: find any available Yahoo league slot not yet updated in this run
+        if (!targetLeague) {
+          targetLeague = currentLeagues.find(
+            (l) => l.platform === 'yahoo' && !importedLeagueNames.includes(l.name)
+          );
+        }
+
+        const leagueIdToUse = targetLeague ? targetLeague.id : `yahoo-${data.leagueId || (i + 1)}`;
+        const importedName = data.leagueName && !['League', 'Yahoo League', ''].includes(data.leagueName.trim()) && !data.leagueName.startsWith('Yahoo League ')
+          ? data.leagueName.trim()
+          : (targetLeague?.name || `Yahoo League ${data.leagueId || (i + 1)}`);
+
+        const updatedLeague: League = {
+          id: leagueIdToUse,
+          name: importedName,
+          platform: 'yahoo',
+          priority: targetLeague?.priority ?? (currentLeagues.length + 1),
+          importance: targetLeague?.importance ?? 3,
+          isMain: targetLeague?.isMain ?? false,
+          scoringFormat: targetLeague?.scoringFormat ?? 'HALF_PPR',
+          yahooConfig: {
+            leagueKey: data.leagueId ? `nfl.l.${data.leagueId}` : (targetLeague?.yahooConfig?.leagueKey || ''),
+          },
+          matchup: {
+            myTeamName: data.matchup.myTeamName || targetLeague?.matchup.myTeamName || 'My Team',
+            myScore: Number(data.matchup.myScore) || 0,
+            myProjected: Number(data.matchup.myProjected) || 0,
+            opponentTeamName: data.matchup.opponentTeamName || targetLeague?.matchup.opponentTeamName || 'Opponent',
+            opponentScore: Number(data.matchup.opponentScore) || 0,
+            opponentProjected: Number(data.matchup.opponentProjected) || 0,
+            winProbability: data.matchup.winProbability !== undefined ? Number(data.matchup.winProbability) : targetLeague?.matchup.winProbability,
+          },
         };
 
-        if (existingIndex >= 0) {
-          const ex = updatedPlayersList[existingIndex];
-          updatedPlayersList[existingIndex] = {
-            ...ex,
-            name: getPreferredDisplayName(ex.name, pName),
-            position: pData.position || ex.position,
-            nflTeam: (pData.nflTeam && pData.nflTeam !== 'FA') ? pData.nflTeam : ex.nflTeam,
-            participations: [...ex.participations, participation],
-          };
+        // Update currentLeagues
+        if (targetLeague) {
+          currentLeagues = currentLeagues.map((l) => (l.id === updatedLeague.id ? updatedLeague : l));
         } else {
-          updatedPlayersList.push({
-            id: `yahoo-${pName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-            name: pName,
-            position: pData.position || 'WR',
-            nflTeam: pData.nflTeam || 'FA',
-            headshotUrl:
-              pData.position === 'DEF'
-                ? `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${(pData.nflTeam || 'nfl').toLowerCase()}.png`
-                : 'https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/default.png',
-            game: {
-              opponent: 'vs NFL',
-              isHome: true,
-              status: 'PREGAME',
-              gameClock: 'Scheduled',
-            },
-            stats: {
-              summary: `${pData.points} pts`,
-            },
-            participations: [participation],
-          });
+          currentLeagues.push(updatedLeague);
         }
-      };
 
-      (data.myPlayers || []).forEach((p: any) => upsertPlayer(p, 'my_team'));
-      (data.oppPlayers || []).forEach((p: any) => upsertPlayer(p, 'opponent'));
+        importedLeagueNames.push(updatedLeague.name);
 
-      onSyncEspnLeague(updatedLeague, updatedPlayersList);
-      setLocalLeagues((prev) => prev.map((l) => (l.id === updatedLeague.id ? updatedLeague : l)));
+        // Merge players for this league
+        let updatedPlayersList = currentPlayers
+          .map((p) => ({
+            ...p,
+            participations: p.participations.filter((part) => part.leagueId !== updatedLeague.id),
+          }))
+          .filter((p) => p.participations.length > 0);
+
+        const upsertPlayer = (pData: any, role: 'my_team' | 'opponent') => {
+          const pName = pData.name.trim();
+          const existingIndex = updatedPlayersList.findIndex(
+            (p) =>
+              p.name.toLowerCase() === pName.toLowerCase() ||
+              arePlayersSame(p.name, p.nflTeam, p.position, pName, pData.nflTeam, pData.position)
+          );
+
+          const participation = {
+            leagueId: updatedLeague.id,
+            role,
+            points: Number(pData.points) || 0,
+            projectedPoints: Number(pData.projectedPoints) || Number(pData.points) || 0,
+            starterStatus: pData.starterStatus as 'starter' | 'bench',
+          };
+
+          if (existingIndex >= 0) {
+            const ex = updatedPlayersList[existingIndex];
+            updatedPlayersList[existingIndex] = {
+              ...ex,
+              name: getPreferredDisplayName(ex.name, pName),
+              position: pData.position || ex.position,
+              nflTeam: (pData.nflTeam && pData.nflTeam !== 'FA') ? pData.nflTeam : ex.nflTeam,
+              headshotUrl: ex.headshotUrl && !ex.headshotUrl.includes('default.png') ? ex.headshotUrl : (pData.headshotUrl || ex.headshotUrl),
+              participations: [...ex.participations, participation],
+            };
+          } else {
+            updatedPlayersList.push({
+              id: `yahoo-${pName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+              name: pName,
+              position: pData.position || 'WR',
+              nflTeam: pData.nflTeam || 'FA',
+              headshotUrl:
+                pData.headshotUrl ||
+                (pData.position === 'DEF'
+                  ? `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${(pData.nflTeam || 'nfl').toLowerCase()}.png`
+                  : 'https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/default.png'),
+              game: {
+                opponent: 'vs NFL',
+                isHome: true,
+                status: 'PREGAME',
+                gameClock: 'Scheduled',
+              },
+              stats: {
+                summary: `${pData.points} pts`,
+              },
+              participations: [participation],
+            });
+          }
+        };
+
+        (data.myPlayers || []).forEach((p: any) => upsertPlayer(p, 'my_team'));
+        (data.oppPlayers || []).forEach((p: any) => upsertPlayer(p, 'opponent'));
+
+        currentPlayers = updatedPlayersList;
+      }
+
+      onSaveLeagues(currentLeagues);
+      setLocalLeagues(currentLeagues);
+      // Update global players state via onSyncEspnLeague with the last or first updated league
+      onSyncEspnLeague(currentLeagues.find((l) => l.name === importedLeagueNames[0]) || currentLeagues[0], currentPlayers);
       setYahooJsonInput('');
 
       setTestResult({
         success: true,
         loading: false,
-        message: `Successfully imported Yahoo matchup for "${updatedLeague.name}"! Loaded ${data.myPlayers?.length || 0} user players and ${data.oppPlayers?.length || 0} opponent players.`,
+        message: `Successfully imported ${rawLeagues.length} Yahoo league(s) (${importedLeagueNames.join(', ')})! All rosters and matchups updated.`,
       });
     } catch (err: any) {
       setTestResult({
