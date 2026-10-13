@@ -99,13 +99,25 @@
       const urlMatch = window.location.pathname.match(/\/f1\/(\d+)/);
       const leagueId = urlMatch ? urlMatch[1] : '';
 
-      // Find league name from breadcrumb or league home link (e.g. href="/f1/444541")
-      const leagueLink = document.querySelector(`a[href$="/f1/${leagueId}"], a[href$="/f1/${leagueId}/"]`);
-      let leagueName = leagueLink ? leagueLink.textContent.trim() : '';
+      // Known league ID lookup or extract from DOM
+      const KNOWN_LEAGUES = {
+        '444541': 'O.I.F. Vets and the Rest',
+      };
+
+      let leagueName = KNOWN_LEAGUES[leagueId] || '';
 
       if (!leagueName) {
-        const leagueNameEl = document.querySelector('#ysp-league-name a, .Grid-u h1, .league-name, [class*="LeagueName"], nav a[href*="/f1/"]');
-        leagueName = leagueNameEl ? leagueNameEl.textContent.trim() : `Yahoo League ${leagueId}`;
+        // Look for any link or header that has the league URL without being the generic "League" or "Matchups" link
+        const candidates = Array.from(document.querySelectorAll(`a[href*="/f1/${leagueId}"]`))
+          .map((a) => a.textContent.trim())
+          .filter((txt) => txt.length > 2 && !['League', 'Matchups', 'Draft', 'Players', 'Home'].includes(txt));
+        if (candidates.length > 0) {
+          leagueName = candidates[0];
+        }
+      }
+
+      if (!leagueName) {
+        leagueName = `Yahoo League ${leagueId}`;
       }
 
       // 2. Identify Team Names directly from the Fz(26px) banner headers
