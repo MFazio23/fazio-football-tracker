@@ -284,10 +284,10 @@ export function App() {
           refreshInterval={settings.refreshIntervalSeconds}
           onRefreshIntervalChange={(sec) => setSettings((s) => ({ ...s, refreshIntervalSeconds: sec }))}
           onManualRefresh={handleRefresh}
-          onSimulatePlay={triggerSimulation}
           onOpenPriorityManager={() => setPriorityDialogOpen(true)}
           onOpenSettings={() => setApiDialogOpen(true)}
           isRefreshing={isRefreshing}
+          leagueCount={leagues.length}
         />
 
         {/* Main Content Dashboard */}

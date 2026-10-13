@@ -15,7 +15,6 @@ import SportsFootballIcon from '@mui/icons-material/SportsFootball';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import FormatListNumberedIcon from '@mui/icons-material/FormatListNumbered';
 import SettingsIcon from '@mui/icons-material/Settings';
-import FlashOnIcon from '@mui/icons-material/FlashOn';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 
 interface HeaderProps {
@@ -23,10 +22,10 @@ interface HeaderProps {
   refreshInterval: number;
   onRefreshIntervalChange: (interval: number) => void;
   onManualRefresh: () => void;
-  onSimulatePlay: () => void;
   onOpenPriorityManager: () => void;
   onOpenSettings: () => void;
   isRefreshing: boolean;
+  leagueCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,10 +33,10 @@ export const Header: React.FC<HeaderProps> = ({
   refreshInterval,
   onRefreshIntervalChange,
   onManualRefresh,
-  onSimulatePlay,
   onOpenPriorityManager,
   onOpenSettings,
   isRefreshing,
+  leagueCount = 6,
 }) => {
   return (
     <AppBar position="sticky" elevation={2} sx={{ backgroundColor: '#0f1422', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
@@ -79,33 +78,13 @@ export const Header: React.FC<HeaderProps> = ({
               />
             </Box>
             <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block' }}>
-              6 Leagues (4 ESPN • 2 Yahoo) • Updated: {lastUpdated || 'Just now'}
+              {leagueCount} Active League{leagueCount !== 1 ? 's' : ''} • Updated: {lastUpdated || 'Just now'}
             </Typography>
           </Box>
         </Box>
 
         {/* Action Controls */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-          {/* Quick Simulate Live Action */}
-          <Tooltip title="Simulate a live play with yards/TDs to test real-time updates!">
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<FlashOnIcon sx={{ color: '#fbbf24' }} />}
-              onClick={onSimulatePlay}
-              sx={{
-                borderColor: 'rgba(245, 158, 11, 0.5)',
-                color: '#fbbf24',
-                backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                '&:hover': {
-                  borderColor: '#f59e0b',
-                  backgroundColor: 'rgba(245, 158, 11, 0.18)',
-                },
-              }}
-            >
-              Simulate Play
-            </Button>
-          </Tooltip>
 
           {/* Auto Refresh Select */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
