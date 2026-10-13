@@ -98,35 +98,37 @@
       // 1. Get League Name and ID
       const urlMatch = window.location.pathname.match(/\/f1\/(\d+)/);
       const leagueId = urlMatch ? urlMatch[1] : '';
-      const leagueNameEl = document.querySelector('#ysp-league-name a, .Grid-u h1, .league-name, [class*="LeagueName"]');
-      const leagueName = leagueNameEl ? leagueNameEl.textContent.trim() : `Yahoo League ${leagueId}`;
 
-      // 2. Identify Team Names from headers or page
-      // On this matchup screen, team 1 is "TDs on the Horizon" and team 2 is "FC Упаковщики"
-      const urlParams = new URLSearchParams(window.location.search);
-      const mid1 = urlParams.get('mid1');
-      const mid2 = urlParams.get('mid2');
+      // Find league name from breadcrumb or league home link (e.g. href="/f1/444541")
+      const leagueLink = document.querySelector(`a[href$="/f1/${leagueId}"], a[href$="/f1/${leagueId}/"]`);
+      let leagueName = leagueLink ? leagueLink.textContent.trim() : '';
 
-      let myTeamName = '';
-      let oppTeamName = '';
-
-      if (mid1) {
-        const link1 = document.querySelector(`a[href*="/f1/${leagueId}/${mid1}"]`);
-        if (link1) myTeamName = link1.textContent.trim();
+      if (!leagueName) {
+        const leagueNameEl = document.querySelector('#ysp-league-name a, .Grid-u h1, .league-name, [class*="LeagueName"], nav a[href*="/f1/"]');
+        leagueName = leagueNameEl ? leagueNameEl.textContent.trim() : `Yahoo League ${leagueId}`;
       }
-      if (mid2) {
-        const link2 = document.querySelector(`a[href*="/f1/${leagueId}/${mid2}"]`);
-        if (link2) oppTeamName = link2.textContent.trim();
-      }
+
+      // 2. Identify Team Names directly from the Fz(26px) banner headers
+      const fzLinks = Array.from(document.querySelectorAll('a[class*="Fz(26px)"]'));
+      let myTeamName = fzLinks[0] ? fzLinks[0].textContent.trim() : '';
+      let oppTeamName = fzLinks[1] ? fzLinks[1].textContent.trim() : '';
 
       if (!myTeamName || !oppTeamName) {
-        const teamLinks = Array.from(document.querySelectorAll('a[href*="/f1/' + leagueId + '/"]')).filter((a) => {
-          const href = a.getAttribute('href') || '';
-          return /\/f1\/\d+\/\d+$/.test(href) && a.textContent.trim().length > 1;
-        });
-        if (!myTeamName) myTeamName = teamLinks[0] ? teamLinks[0].textContent.trim() : 'TDs on the Horizon';
-        if (!oppTeamName) oppTeamName = teamLinks[1] ? teamLinks[1].textContent.trim() : 'FC Упаковщики';
+        const urlParams = new URLSearchParams(window.location.search);
+        const mid1 = urlParams.get('mid1');
+        const mid2 = urlParams.get('mid2');
+        if (mid1 && !myTeamName) {
+          const l1 = document.querySelector(`a[href*="/f1/${leagueId}/${mid1}"]`);
+          if (l1) myTeamName = l1.textContent.trim();
+        }
+        if (mid2 && !oppTeamName) {
+          const l2 = document.querySelector(`a[href*="/f1/${leagueId}/${mid2}"]`);
+          if (l2) oppTeamName = l2.textContent.trim();
+        }
       }
+
+      if (!myTeamName) myTeamName = 'TDs on the Horizon';
+      if (!oppTeamName) oppTeamName = 'FC Упаковщики';
 
       // 3. Extract Head-to-Head rows
       const myPlayers = [];
